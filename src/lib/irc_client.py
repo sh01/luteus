@@ -256,4 +256,4 @@ def _selftest(target, nick='Zanaffar', username='chimera', realname=b'? ? ?',
 
 if (__name__ == '__main__'):
    import sys
-   _selftest((sys.argv[1],6667),channels=(b'#test-alpha',))
+   _selftest((sys.argv[1],6667),(sys.argv[2].encode('ascii'),))
