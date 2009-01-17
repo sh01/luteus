@@ -27,6 +27,62 @@ class IRCProtocolError(ValueError):
       ValueError.__init__(self, *args, **kwargs)
 
 
+IA_SERVER = 0
+IA_NICK = 1
+
+class IRCAddress(bytes):
+   def __init__(self, *args, **kwargs):
+      bytes.__init__(self, *args, **kwargs)
+      if not (b'!' in self):
+         if (b'.' in self):
+            self.type = IA_SERVER
+         else:
+            self.type = IA_NICK
+            self.nick = self
+            self.hostmask = None
+            self.user = None
+         return
+      
+      self.type = IA_NICK
+      (nick, rest) = self.split(b'!',1)
+      self.nick = IRCNick(nick)
+      (user, hostmask) = rest.split(b'@',1)
+      self.hostmask = hostmask
+   
+   def target_get(self):
+      """Return target bytes sequence"""
+      if (self.type == IA_SERVER):
+         return self
+      return self.nick
+   
+   def irc_eq(self, other):
+      """IRC equality testing"""
+      if (self.type != other.type):
+         return False
+      if (self.type == IA_SERVER):
+         return (self == other)
+      return (self.nick == other.nick)
+
+
+class IRCNick(bytes):
+   LOWERMAP = bytearray(range(256))
+   for i in range(ord(b'A'), ord(b'Z')+1):
+      LOWERMAP[i] = ord(chr(i).lower())
+   LOWERMAP[ord(b'[')] = ord(b'{')
+   LOWERMAP[ord(b']')] = ord(b'}')
+   LOWERMAP[ord(b'\\')] = ord(b'|')
+   LOWERMAP[ord(b'~')] = ord(b'^')
+   LOWERMAP = bytes(LOWERMAP)
+   
+   def __eq__(self, other):
+      return (self.translate(self.LOWERMAP) == other.translate(self.LOWERMAP))
+   def __neq__(self, other):
+      return not (self == other)
+   def __hash__(self):
+      return bytes.__hash__(self.translate(self.LOWERMAP))
+   # FIXME: add ordering
+
+
 class IRCMessage:
    """An IRC message, as defined by RFC 2812"""
    def __init__(self, prefix:bytes, command:bytes, parameters:bytes):
@@ -35,17 +91,17 @@ class IRCMessage:
       self.parameters = parameters
    
    @classmethod
-   def build_from_line(cls, msg):
+   def build_from_line(cls, line):
       """Build instance from raw line"""
-      msg_split = msg.split(b' ') # RFC 2812 says this is correct.
-      if (msg.startswith(b':')):
-         prefix = msg_split[0][1:]
-         command = msg_split[1]
-         parameters = msg_split[2:]
+      line_split = line.split(b' ') # RFC 2812 says this is correct.
+      if (line.startswith(b':')):
+         prefix = IRCAddress(line_split[0][1:])
+         command = line_split[1]
+         parameters = line_split[2:]
       else:
          prefix = None
-         command = msg_split[0]
-         parameters = msg_split[1:]
+         command = line_split[0]
+         parameters = line_split[1:]
       
       i = 0
       while (i < len(parameters)):
@@ -72,7 +128,7 @@ class IRCMessage:
             raise ValueError('Parameter list {0} contains non-last'
                'parameter containing a space.'.format(params_out))
       
-      return b' '.join(prefix + [self.command] + params_out) + b'\n'
+      return b' '.join(prefix + [self.command] + params_out) + b'\r\n'
    
    def __repr__(self):
       return '{0}.build_from_line({1!a})'.format(
@@ -80,14 +136,18 @@ class IRCMessage:
 
 
 class IRCChannel:
-   def __init__(self, chan, topic):
+   def __init__(self, chan):
       self.chan = chan
-      self.topic = topic
+      self.topic = None
+      self.users = None
 
 
 class IRCClientConnection(AsyncLineStream):
    logger = logging.getLogger('IRCConnection')
    log = logger.log
+   
+   IRCNICK_INITCHARS = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}'
+   
    def __init__(self, *args, nick, username, realname, mode=0, **kwargs):
       if (isinstance(nick, str)):
          nick = nick.encode('ascii')
@@ -150,10 +210,10 @@ class IRCClientConnection(AsyncLineStream):
       msg = IRCMessage(None, command, parameters)
       self.em_out_msg(msg)
       line_out = msg.line_build()
-      if ((b'\x00' in line_out) or (b'\x0a' in line_out[:-1]) or
-         (b'\r' in line_out[:-1])):
+      if ((b'\x00' in line_out) or (b'\x0a' in line_out[:-2]) or
+         (b'\r' in line_out[:-2])):
          raise ValueError('Trying to send line {0!a}, which contains an invalid'
-            'char.'.format(line_out))
+            ' char.'.format(line_out))
       self.send_bytes((line_out,))
    
    @classmethod
@@ -171,14 +231,14 @@ class IRCClientConnection(AsyncLineStream):
          parameters."""
       if (len(msg.parameters) < num):
          raise IRCProtocolError(msg, 'Insufficient arguments; expected at least'
-            '{0}.'.format(num))
+            ' {0}.'.format(num))
    
    def _process_connect(self):
       """Process connect finish."""
       self.send_msg(b'NICK', self.wnick)
       self.send_msg(b'USER', self.username, str(self.mode).encode('ascii'),
          b'*', self.realname)
-      self.nick = self.wnick # FIXME: figure out how to choose alternatives
+      self.nick = IRCNick(self.wnick) # FIXME: figure out how to choose alternatives
    
    def process_close(self):
       """Process connection closing."""
@@ -190,8 +250,24 @@ class IRCClientConnection(AsyncLineStream):
    
    def _process_msg_JOIN(self, msg):
       """Process JOIN message."""
-      self._pc_check(msg, 2)
-      # FIXME: do channel data init here
+      self._pc_check(msg, 1)
+      if ((msg.prefix is None) or (msg.prefix.type != IA_NICK)):
+         raise IRCProtocolError('Non-nick trying to join channel.')
+      
+      # RFC 2812 allows servers to use join-lists in JOIN messages to clients.
+      chans = msg.parameters[0].split(b',')
+      for chan in chans:
+         if (msg.prefix.nick == self.nick):
+            # Our join.
+            if (chan in self.channels):
+               raise IRCProtocolError("Joining channel we're already in.")
+            self.channels[chan] = IRCChannel(chan)
+            continue
+         
+         if (not chan in self.channels):
+            # Iffy: *IS* this is an error?
+            raise IRCProtocolError("JOIN message for channel we aren't on.")
+         self.channels[chan].users[msg.prefix.nick] = set()
    
    # connect numerics
    def _process_msg_001(self, msg):
@@ -226,6 +302,7 @@ class IRCClientConnection(AsyncLineStream):
       chan = bytes(msg.parameters[1])
       if not (chan in self.channels):
          raise IRCProtocolError(msg, "Not on chan {0!a}.".format(chan))
+      self.channels[chan].topic = False
       
    def _process_msg_332(self, msg):
       """Process RPL_TOPIC message"""
@@ -234,6 +311,23 @@ class IRCClientConnection(AsyncLineStream):
       if not (chan in self.channels):
          raise IRCProtocolError(msg, "Not on chan {0!a}.".format(chan))
       self.channels[chan].topic = msg.parameters[2]
+   
+   def _process_msg_353(self, msg):
+      """Process RPL_NAMREPLY message."""
+      self._pc_check(msg, 4)
+      chan = self.channels[bytes(msg.parameters[2])]
+      chan.users = {}
+      for nick_str in msg.parameters[3].split(b' '):
+         i = 0
+         for c in nick_str:
+            if (c in self.IRCNICK_INITCHARS):
+               break
+            i += 1
+         nick = IRCNick(nick_str[i:])
+         
+         chan.users[nick] = set()
+         for b in nick_str[:i]:
+            chan.users[nick].add(chr(b).encode('ascii'))
 
 
 def _selftest(target, nick='Zanaffar', username='chimera', realname=b'? ? ?',
@@ -256,4 +350,4 @@ def _selftest(target, nick='Zanaffar', username='chimera', realname=b'? ? ?',
 
 if (__name__ == '__main__'):
    import sys
-   _selftest((sys.argv[1],6667),(sys.argv[2].encode('ascii'),))
+   _selftest((sys.argv[1],6667),channels=(sys.argv[2].encode('ascii'),))
