@@ -26,7 +26,7 @@ class IRCProtocolError(ValueError):
       self.msg = msg
       ValueError.__init__(self, *args, **kwargs)
 
-
+# IRC Address Types
 IA_SERVER = 0
 IA_NICK = 1
 
@@ -140,6 +140,7 @@ class IRCChannel:
       self.chan = chan
       self.topic = None
       self.users = None
+      self.expect_part = False
 
 
 class IRCClientConnection(AsyncLineStream):
@@ -162,9 +163,10 @@ class IRCClientConnection(AsyncLineStream):
       self.mode = mode
       
       # connection state
+      self.peer = None
+      self.link_done = False
       self.motd = None
       self.motd_pending = None
-      self.link_done = False
       self.channels = {}
       
       self.em_in_raw = EventMultiplexer(self)
@@ -172,6 +174,12 @@ class IRCClientConnection(AsyncLineStream):
       self.em_out_msg = EventMultiplexer(self)
       self.em_link_finish = EventMultiplexer(self)
       self.em_shutdown = EventMultiplexer(self)
+      
+      # called with <nick> (None for self), <chan>.
+      self.em_chan_join = EventMultiplexer(self)
+      # called with <victim> (None for self), <chan>, <perpetrator> (None for
+      # PARTs and self-kicks)
+      self.em_chan_leave = EventMultiplexer(self)
       AsyncLineStream.__init__(self, *args, lineseps={b'\n', b'\r'}, **kwargs)
       
    def process_input(self, line_data_mv):
@@ -255,24 +263,88 @@ class IRCClientConnection(AsyncLineStream):
          raise IRCProtocolError('Non-nick trying to join channel.')
       
       # RFC 2812 allows servers to use join-lists in JOIN messages to clients.
-      chans = msg.parameters[0].split(b',')
+      chans = bytes(msg.parameters[0]).split(b',')
       for chan in chans:
          if (msg.prefix.nick == self.nick):
             # Our join.
             if (chan in self.channels):
                raise IRCProtocolError("Joining channel we're already in.")
             self.channels[chan] = IRCChannel(chan)
+            self.em_chan_join(None, self.channels[chan])
             continue
          
          if (not chan in self.channels):
             # Iffy: *IS* this is an error?
             raise IRCProtocolError("JOIN message for channel we aren't on.")
-         self.channels[chan].users[msg.prefix.nick] = set()
+         chanusers = self.channels[chan].users
+         if (msg.prefix.nick in chanusers):
+            raise IRCPRotocolError("User joining channel they are already on.")
+         chanusers[msg.prefix.nick] = set()
+         self.em_chan_join(msg.prefix.nick, self.channels[chan])
+   
+   def _process_msg_PART(self, msg):
+      """Process PART message."""
+      self._pc_check(msg, 1)
+      chans = bytes(msg.parameters[0]).split(b',')
+      
+      if ((msg.prefix is None) or (msg.prefix.type != IA_NICK)):
+         raise IRCPRotocolError('Bogus PART prefix.')
+      nick = msg.prefix.nick
+      
+      if (len(msg.parameters) > 1):
+         reason = msg.parameters[1]
+      else:
+         reason = None
+      
+      for chnn in chans:
+         if (not chnn in self.channels):
+            raise IRCProtocolError("PART message for channel we aren't on.")
+         chan = self.channels[chnn]
+         if (not nick in chan.users):
+            raise IRCProtocolError("PARTed user not on channel.")
+         
+         self.em_chan_leave(nick, chan, None)
+         if (nick == self.nick):
+            del(self.channels[chnn])
+            break
+         del(chan.users[nick])
+   
+   def _process_msg_KICK(self, msg):
+      """Process KICK message."""
+      self._pc_check(msg, 2)
+      # RFC 2812 says that multi-target lists can't occur in this direction;
+      # no matter, it's safer to support them anyway.
+      chans = bytes(msg.parameters[0]).split(b',')
+      nicks = bytes(msg.parameters[1]).split(b',')
+      
+      for chnn in chans:
+         if not (chnn in self.channels):
+            raise IRCProtocolError("KICK message for channel we aren't on.")
+         
+         chan = self.channels[chnn]
+         for nick in nicks:
+            if (msg.prefix is None):
+               perpetrator = self.peer
+            elif ((msg.prefix.type == IA_NICK) and (nick == msg.prefix.nick)):
+               perpetrator = None
+            else:
+               perpetrator = msg.prefix
+            self.em_chan_leave(nick, chan, perpetrator)
+            
+            if (nick != self.nick):
+               del(chan.users[nick])
+            
+            if (nick == self.nick):
+               # Our part.
+               del(self.channels[chnn])
+               break
    
    # connect numerics
    def _process_msg_001(self, msg):
       """Process RPL_WELCOME message."""
-      pass
+      self.peer = (self.peer or msg.prefix)
+      if (self.peer is None):
+         self.peer = b''
    
    # MOTD
    def _process_msg_375(self, msg):
@@ -292,8 +364,9 @@ class IRCClientConnection(AsyncLineStream):
       """Process MOTD end"""
       self.motd = tuple(self.motd_pending)
       self.motd_pending = None
-      self.link_done = True
-      self.em_link_finish()
+      if (not self.link_done):
+         self.link_done = True
+         self.em_link_finish()
    
    # replies to JOIN request
    def _process_msg_331(self, msg):
@@ -329,6 +402,26 @@ class IRCClientConnection(AsyncLineStream):
          for b in nick_str[:i]:
             chan.users[nick].add(chr(b).encode('ascii'))
 
+# ---------------------------------------------------------------- test code
+class __ChanEcho:
+   def __init__(self, conn, chan):
+      self.conn = conn
+      def ip_ret(n):
+         def _info_print(*args, **kwargs):
+            if (not conn):
+               return
+            conn.send_msg(b'PRIVMSG', chan, '{0}: {1} {2}'.format(n, args, kwargs).encode('ascii'))
+         
+         return _info_print
+      
+      for name in conn.__dict__:
+         if (not name.startswith('em_')):
+            continue
+         if (name.endswith('_msg') or name.endswith('_raw')):
+            continue
+         
+         getattr(conn, name).new_listener(ip_ret(name))
+      
 
 def _selftest(target, nick='Zanaffar', username='chimera', realname=b'? ? ?',
       channels=()):
@@ -345,6 +438,10 @@ def _selftest(target, nick='Zanaffar', username='chimera', realname=b'? ? ?',
       username=username, realname=realname)
    irccc.em_shutdown.new_listener(ed.shutdown)
    irccc.em_link_finish.new_listener(link)
+   
+   if (channels):
+      __ChanEcho(irccc, channels[0])
+   
    ed.event_loop()
 
 
