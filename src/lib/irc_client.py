@@ -21,6 +21,10 @@ from gonium.event_multiplexing import EventMultiplexer
 from gonium.fdm.stream import AsyncLineStream
 
 
+def b2b(bseq):
+   return (chr(x).encode('ascii') for x in bseq)
+
+
 class IRCProtocolError(ValueError):
    def __init__(self, msg, *args, **kwargs):
       self.msg = msg
@@ -38,7 +42,7 @@ class IRCAddress(bytes):
             self.type = IA_SERVER
          else:
             self.type = IA_NICK
-            self.nick = self
+            self.nick = IRCNick(self)
             self.hostmask = None
             self.user = None
          return
@@ -136,11 +140,156 @@ class IRCMessage:
 
 
 class IRCChannel:
-   def __init__(self, chan):
+   def __init__(self, chan, topic=None, users=None, modes=None,
+         expect_part=False):
       self.chan = chan
-      self.topic = None
-      self.users = None
-      self.expect_part = False
+      self.topic = topic
+      self.users = users
+      if (modes is None):
+         modes = {}
+      self.modes = modes
+      self.expect_part = expect_part
+   def __repr__(self):
+      return '{0}({1}, {2}, {3}, {4}, {5})'.format(self.__class__.__name__,
+         self.chan, self.topic, self.users, self.modes, self.expect_part)
+
+
+class Mode:
+   def __init__(self, char, level):
+      self.char = char
+      self.level = level
+   
+   def __repr__(self):
+      return '{0}({1},{2})'.format(self.__class__.__name__, self.char, self.level)
+   def __le__(self, other):
+      return (self.level <= other.level)
+   def __lt__(self, other):
+      return (self.level < other.level)
+   def __ge__(self, other):
+      return (self.level <= other.level)
+   def __gt__(self, other):
+      return (self.level > other.level)
+   def __eq__(self, other):
+      return (self.char == other.char)
+   def __neq__(self, other):
+      return (self.char != other.char)
+   def __hash__(self):
+      return hash(self.char)
+
+
+class ChannelModeParser:
+   def __init__(self,
+      userflags=((b'o',b'@'),(b'v',b'+')), # flags associated with a nick on the channel
+      listmodes=(b'b'),  # modes manipulating list-type channel attributes
+      boolmodes=(b'p',b's',b'i',b't',b'n',b'm'),   # boolean channel modes
+      strmodes=(b'k'),    # channel modes defined by a string value
+      strmodes_opt=(b'l') # same, but unsettable by ommitting the argument
+      ):
+      self.userflags_set(userflags)
+      self.lmodes = frozenset(listmodes)
+      self.bmodes = frozenset(boolmodes)
+      self.smodes = frozenset(strmodes)
+      self.smodes_opt = frozenset(strmodes_opt)
+   
+   def userflags_set(self, userflags):
+      self.uflags2modes = {}
+      self.umodes2flags = {}
+      self.umodes2umodes = {}
+      level = 0
+      for (m, flag) in reversed(userflags):
+         mode = Mode(m, level)
+         self.uflags2modes[flag] = mode
+         self.umodes2flags[m] = flag
+         self.umodes2umodes[m] = mode
+         level += 1
+   
+   def process_ISUPPORT_PREFIX(self, prefix):
+      """Process PREFIX arg value from RPL_ISUPPORT(005) message"""
+      if (not prefix.startswith(b'(')):
+         raise ValueError('Invalid PREFIX val {0}'.format(prefix))
+      i = prefix.index(b')')
+      
+      modes = prefix[1:i]
+      flags = prefix[i+1:]
+      if (len(flags) != len(modes)):
+         raise ValueError('Invalid PREFIX val {0}'.format(prefix))
+      
+      self.userflags_set([(e[0],e[1]) for e in zip(b2b(modes),b2b(flags))])
+   
+   def process_ISUPPORT_CHANMODES(self, chm):
+      """Process CHANMODES arg value from RPL_ISUPPORT(005) message"""
+      try:
+         (chm_l, chm_str, chm_str_opt, chm_bool) = chm.split(b',')
+      except ValueError as exc:
+         raise IRCProtocolError('Bogus CHANMODES value') from exc
+      self.lmodes = frozenset(b2b(chm_l))
+      self.bmodes = frozenset(b2b(chm_bool))
+      self.smodes = frozenset(b2b(chm_str))
+      self.smodes_opt = frozenset(b2b(chm_str_opt))
+   
+   def chan_init(self, chan):
+      for mode in self.bmodes:
+         chan.modes[mode] = False
+      for mode in self.lmodes:
+         chan.modes[mode] = set()
+      for mode in self.smodes:
+         chan.modes[mode] = None
+      for mode in self.smodes_opt:
+         chan.modes[mode] = None
+   
+   def set_chmodes(self, log, chan, modeargs):
+      if (len(modeargs) < 1):
+         raise IRCProtocolError('Insufficient args for MODE')
+      mseq = modeargs[0]
+      arg_i = 1
+      set = True
+      
+      try:
+         for m in b2b(mseq):
+            if (m == b'+'):
+               set = True
+            elif (m == b'-'):
+               set = False
+            elif (m in self.bmodes):
+               chan.modes[m] = set
+            elif (m in self.smodes):
+               if (set):
+                  chan.modes[m] = modeargs[arg_i]
+               else:
+                  chan.modes[m] = None
+               arg_i += 1
+            elif (m in self.smodes_opt):
+               if (set):
+                  chan.modes[m] = modeargs[arg_i]
+                  arg_i += 1
+               else:
+                  chan.modes[m] = None
+            elif (m in self.lmodes):
+               if (set):
+                  chan.modes[m].add(modeargs[arg_i])
+               else:
+                  chan.modes[m].remove(modeargs[arg_i])
+            elif (m in self.umodes2umodes):
+               umode = self.umodes2umodes[m]
+               nick = IRCNick(modeargs[arg_i])
+               if (set):
+                  if (umode in chan.users[nick]):
+                     raise IRCProtocolError("Attempting to set present umode")
+                  chan.users[nick].add(umode)
+               else:
+                  try:
+                     chan.users[nick].remove(umode)
+                  except KeyError as exc:
+                     if (max(chan.users[nick]) < umode):
+                        raise
+                     # This can happen for NAMES prefixes that only indicate
+                     # highest-valued user mode. Nothing we can do about it.
+               arg_i += 1
+            else:
+               raise IRCProtocolError('Unknown mode {0}.'.format(m))
+      
+      except (KeyError, IndexError) as exc:
+         raise IRCProtocolError('Failed to parse MODE.') from exc
 
 
 class IRCClientConnection(AsyncLineStream):
@@ -149,7 +298,8 @@ class IRCClientConnection(AsyncLineStream):
    
    IRCNICK_INITCHARS = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}'
    
-   def __init__(self, *args, nick, username, realname, mode=0, **kwargs):
+   def __init__(self, *args, nick, username, realname, mode=0, chm_parser=None,
+         **kwargs):
       if (isinstance(nick, str)):
          nick = nick.encode('ascii')
       if (isinstance(username, str)):
@@ -157,10 +307,15 @@ class IRCClientConnection(AsyncLineStream):
       if (isinstance(realname, str)):
          realname = realname.encode('ascii')
       self.wnick = nick
-      self.nick = nick
+      self.nick = None
       self.realname = realname
       self.username = username
       self.mode = mode
+      self.modes = set()
+      
+      if (chm_parser is None):
+         chm_parser = ChannelModeParser()
+      self.chm_parser = chm_parser
       
       # connection state
       self.peer = None
@@ -174,6 +329,7 @@ class IRCClientConnection(AsyncLineStream):
       self.em_out_msg = EventMultiplexer(self)
       self.em_link_finish = EventMultiplexer(self)
       self.em_shutdown = EventMultiplexer(self)
+      self.em_chmode = EventMultiplexer(self)
       
       # called with <nick> (None for self), <chan>.
       self.em_chan_join = EventMultiplexer(self)
@@ -203,11 +359,24 @@ class IRCClientConnection(AsyncLineStream):
          except AttributeError:
             pass
          else:
+            if (cmd_str.isdigit()):
+               # Numeric replies are always targeted to our nick.
+               if (not msg.parameters):
+                  self.log(30, 'From {0}: bogus numeric: {1}'.format(
+                     self.peer_address, msg))
+               else:
+                  nick = msg.parameters[0]
+                  if (self.nick != nick):
+                     if (not (self.nick is None)):
+                        self.log(30, 'From {0}: missed a nickchange from {0} '
+                           'to {1}.'.format(self.peer_address, self.nick, nick))
+                     self.nick = nick
+            
             try:
                func(msg)
             except IRCProtocolError as exc:
                self.log(30, 'From {0}: msg {1} failed to parse: {2}'.format(
-                  self.peer_address, msg, exc))
+                  self.peer_address, msg, exc), exc_info=True)
             got_func = True
       
       if (got_func is False):
@@ -246,7 +415,6 @@ class IRCClientConnection(AsyncLineStream):
       self.send_msg(b'NICK', self.wnick)
       self.send_msg(b'USER', self.username, str(self.mode).encode('ascii'),
          b'*', self.realname)
-      self.nick = IRCNick(self.wnick) # FIXME: figure out how to choose alternatives
    
    def process_close(self):
       """Process connection closing."""
@@ -263,24 +431,26 @@ class IRCClientConnection(AsyncLineStream):
          raise IRCProtocolError('Non-nick trying to join channel.')
       
       # RFC 2812 allows servers to use join-lists in JOIN messages to clients.
-      chans = bytes(msg.parameters[0]).split(b',')
-      for chan in chans:
+      chnns = bytes(msg.parameters[0]).split(b',')
+      for chnn in chnns:
          if (msg.prefix.nick == self.nick):
             # Our join.
-            if (chan in self.channels):
+            if (chnn in self.channels):
                raise IRCProtocolError("Joining channel we're already in.")
-            self.channels[chan] = IRCChannel(chan)
-            self.em_chan_join(None, self.channels[chan])
+            chan = IRCChannel(chnn)
+            self.channels[chnn] = chan
+            self.chm_parser.chan_init(chan)
+            self.em_chan_join(None, chan)
             continue
          
-         if (not chan in self.channels):
+         if (not chnn in self.channels):
             # Iffy: *IS* this is an error?
             raise IRCProtocolError("JOIN message for channel we aren't on.")
-         chanusers = self.channels[chan].users
+         chanusers = self.channels[chnn].users
          if (msg.prefix.nick in chanusers):
-            raise IRCPRotocolError("User joining channel they are already on.")
+            raise IRCProtocolError("User joining channel they are already on.")
          chanusers[msg.prefix.nick] = set()
-         self.em_chan_join(msg.prefix.nick, self.channels[chan])
+         self.em_chan_join(msg.prefix.nick, self.channels[chnn])
    
    def _process_msg_PART(self, msg):
       """Process PART message."""
@@ -339,12 +509,84 @@ class IRCClientConnection(AsyncLineStream):
                del(self.channels[chnn])
                break
    
+   def _process_msg_MODE(self, msg):
+      """Process MODE message."""
+      self._pc_check(msg, 2)
+      victim = bytes(msg.parameters[0])
+      if (victim[0] in self.IRCNICK_INITCHARS):
+         #nick mode
+         if (victim != self.nick):
+            raise IRCProtocolError('Bogus target for user mode.')
+         set = True
+         try:
+            for m in msg.parameters[1]:
+               if (m == b'+'):
+                  set = True
+               elif (m == b'-'):
+                  set = False
+               elif (set):
+                  self.modes.add(m)
+               else:
+                  self.modes.remove(m)
+         except KeyError as exc:
+            raise IRCProtocolError('Trying to remove unset user mode {0}.'
+               ''.format(m)) from KeyError
+         return
+      
+      # channel mode
+      try:
+         chan = self.channels[victim]
+      except KeyError as exc:
+         raise IRCProtocolError("Got MODE message for channel {0} I'm not on."
+            ''.format(victim)) from exc
+      
+      self.chm_parser.set_chmodes(self.log, chan, msg.parameters[1:])
+      self.em_chmode(chan, msg.parameters)
+   
    # connect numerics
    def _process_msg_001(self, msg):
       """Process RPL_WELCOME message."""
       self.peer = (self.peer or msg.prefix)
-      if (self.peer is None):
-         self.peer = b''
+   
+   def _process_msg_004(self, msg):
+      """Process RPL_MYINFO message."""
+      if ((self.peer is None) and (msg.parameters)):
+         self.peer = msg.parameters[0]
+   
+   def _process_msg_005(self, msg):
+      """Process RPL_ISUPPORT message"""
+      if (msg.parameters[0] == self.nick):
+         args = list(msg.parameters[1:])
+      else:
+         args = list(msg.parameters)
+
+      # draft-brocklesby-irc-isupport mandates the last argument to be used for
+      # a silly human-readable explanation; and indeed this is done by at least
+      # some existing implementations. Discard it, if present.
+      if (b' ' in args[-1]):
+         del(args[-1])
+      
+      for is_arg in args:
+         if (b'=' in is_arg):
+            (name,val) = is_arg.split(b'=',1)
+            if (val == b''):
+               val = True
+         elif (is_arg.startswith(b'-')):
+            name = is_arg[1:]
+            val = False
+         else:
+            name = is_arg
+            val = True
+     
+         if (name.upper() in (b'PREFIX', b'CHANMODES')):
+            if (val is True):
+               val = ''
+            if (name.upper() == b'PREFIX'):
+               self.chm_parser.process_ISUPPORT_PREFIX(val)
+               self.log(20, '{0} parsed prefix data from 005.'.format(self))
+            else:
+               self.chm_parser.process_ISUPPORT_CHANMODES(val)
+               self.log(20, '{0} parsed chanmodes data from 005.'.format(self))
    
    # MOTD
    def _process_msg_375(self, msg):
@@ -399,8 +641,8 @@ class IRCClientConnection(AsyncLineStream):
          nick = IRCNick(nick_str[i:])
          
          chan.users[nick] = set()
-         for b in nick_str[:i]:
-            chan.users[nick].add(chr(b).encode('ascii'))
+         for b in b2b(nick_str[:i]):
+            chan.users[nick].add(self.chm_parser.uflags2modes[b])
 
 # ---------------------------------------------------------------- test code
 class __ChanEcho:
