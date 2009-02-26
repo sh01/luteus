@@ -298,6 +298,9 @@ class IRCClientConnection(AsyncLineStream):
    
    IRCNICK_INITCHARS = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}'
    
+   EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_out_msg', 'em_link_finish',
+      'em_shutdown', 'em_chmode')
+   
    def __init__(self, *args, nick, username, realname, mode=0, chm_parser=None,
          **kwargs):
       if (isinstance(nick, str)):
@@ -324,12 +327,8 @@ class IRCClientConnection(AsyncLineStream):
       self.motd_pending = None
       self.channels = {}
       
-      self.em_in_raw = EventMultiplexer(self)
-      self.em_in_msg = EventMultiplexer(self)
-      self.em_out_msg = EventMultiplexer(self)
-      self.em_link_finish = EventMultiplexer(self)
-      self.em_shutdown = EventMultiplexer(self)
-      self.em_chmode = EventMultiplexer(self)
+      for name in self.EM_NAMES:
+         self.em_new(name)
       
       # called with <nick> (None for self), <chan>.
       self.em_chan_join = EventMultiplexer(self)
@@ -337,7 +336,11 @@ class IRCClientConnection(AsyncLineStream):
       # PARTs and self-kicks)
       self.em_chan_leave = EventMultiplexer(self)
       AsyncLineStream.__init__(self, *args, lineseps={b'\n', b'\r'}, **kwargs)
-      
+   
+   def em_new(self, attr):
+      """Instantiate new EventMultiplexer attribute"""
+      setattr(self, attr, EventMultiplexer(self))
+   
    def process_input(self, line_data_mv):
       """Process IRC data"""
       line_data = bytearray(bytes(line_data_mv).rstrip(b'\r\n'))
