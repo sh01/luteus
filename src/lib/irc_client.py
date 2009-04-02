@@ -17,7 +17,7 @@
 
 import logging
 
-from gonium.event_multiplexing import EventMultiplexer
+from .event_multiplexing import OrderingEventMultiplexer, ccd
 from gonium.fdm.stream import AsyncLineStream
 
 
@@ -292,6 +292,14 @@ class ChannelModeParser:
          raise IRCProtocolError('Failed to parse MODE.') from exc
 
 
+class BlockResult(list):
+   def __init__(self, callback):
+      list.__init__(self)
+      self.callback = callback
+   def __call__(self):
+      self.callback(self)
+
+
 class IRCClientConnection(AsyncLineStream):
    logger = logging.getLogger('IRCConnection')
    log = logger.log
@@ -299,7 +307,16 @@ class IRCClientConnection(AsyncLineStream):
    IRCNICK_INITCHARS = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}'
    
    EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_out_msg', 'em_link_finish',
-      'em_shutdown', 'em_chmode')
+      'em_shutdown', 'em_chmode', 'em_chan_join', 'em_chan_leave')
+   #calling conventions:
+   # em_in_raw(msg: bytearray)
+   # em_in_msg(msg: IRCMessage)
+   # em_link_finish()
+   # em_chan_join(nick, chan)
+   #   <nick> is None for self-joins
+   # em_chan_leave(victim, chan, perpetrator)
+   #   <victim> is None for self-leaves
+   #   <perpetrator> is None for PARTs and self-kicks
    
    def __init__(self, *args, nick, username, realname, mode=0, chm_parser=None,
          **kwargs):
@@ -330,25 +347,22 @@ class IRCClientConnection(AsyncLineStream):
       for name in self.EM_NAMES:
          self.em_new(name)
       
-      # called with <nick> (None for self), <chan>.
-      self.em_chan_join = EventMultiplexer(self)
-      # called with <victim> (None for self), <chan>, <perpetrator> (None for
-      # PARTs and self-kicks)
-      self.em_chan_leave = EventMultiplexer(self)
       AsyncLineStream.__init__(self, *args, lineseps={b'\n', b'\r'}, **kwargs)
    
    def em_new(self, attr):
       """Instantiate new EventMultiplexer attribute"""
-      setattr(self, attr, EventMultiplexer(self))
+      setattr(self, attr, OrderingEventMultiplexer(self))
    
    def process_input(self, line_data_mv):
       """Process IRC data"""
       line_data = bytearray(bytes(line_data_mv).rstrip(b'\r\n'))
-      self.em_in_raw(line_data)
+      if (self.em_in_raw(line_data)):
+         return
       if (line_data == b''):
          return
       msg = IRCMessage.build_from_line(line_data)
-      self.em_in_msg(msg)
+      if (self.em_in_msg(msg)):
+         return
       
       got_func = False
       try:
@@ -652,6 +666,7 @@ class __ChanEcho:
    def __init__(self, conn, chan):
       self.conn = conn
       def ip_ret(n):
+         @ccd(0)
          def _info_print(*args, **kwargs):
             if (not conn):
                return
@@ -681,8 +696,8 @@ def _selftest(target, nick='Zanaffar', username='chimera', realname=b'? ? ?',
    ed = ED_get()()
    irccc = IRCClientConnection.irc_build_sock_connect(ed, target, nick=nick,
       username=username, realname=realname)
-   irccc.em_shutdown.new_listener(ed.shutdown)
-   irccc.em_link_finish.new_listener(link)
+   irccc.em_shutdown.new_listener(ccd(1)(ed.shutdown))
+   irccc.em_link_finish.new_listener(ccd(1)(link))
    
    if (channels):
       __ChanEcho(irccc, channels[0])
