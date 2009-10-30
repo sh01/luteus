@@ -141,12 +141,155 @@ class ChannelModeParser:
          raise IRCProtocolError('Failed to parse MODE.') from exc
 
 
-class BlockResult(list):
-   def __init__(self, callback):
-      list.__init__(self)
+class QueryFinish(BaseException):
+   pass
+
+class _BlockQuery:
+   BQTypes = {}
+   cmd = None
+   start = None
+   def __init__(self, msg, callback):
+      if not (msg.prefix is None):
+         raise ValueError('Need msg with prefix == None.')
+      self.msg = msg
       self.callback = callback
-   def __call__(self):
-      self.callback(self)
+      self.active = False
+      self.rv = []
+   
+   @classmethod
+   def reg_class(cls, cls_new):
+      cmd = cls_new.cmd
+      if not (cmd is None):
+         cmd = cmd.upper()
+      cls.BQTypes[cmd] = cls_new
+      return cls_new
+   
+   @classmethod
+   def build(cls, msg, *args, **kwargs):
+      try:
+         cls_sub = cls.BQTYPES[msg.command.upper()]
+      except KeyError:
+         cls_sub = cls.BQTYPES[None]
+      
+      return cls_sub(msg, *args, **kwargs)
+   
+   def put_req(self, conn):
+      conn.send_msg(self.msg.command, self.msg.parameters)
+   
+   def get_msg_barriers(self, msg):
+      raise NotImplementedError('Not done here; use a subclass instead.')
+   
+   def process_data(self, msg):
+      (is_start, is_end) = self.get_msg_barriers(msg)
+      if (not self.active):
+         if (is_start):
+            self.active = True
+         else:
+            return False
+      
+      self.rv.append(msg)
+      if (is_end):
+         self.active = False
+         self.callback(self)
+         raise QueryFinish()
+      
+      return True
+
+# If it's stupid but it works, it isn't stupid. It is, however, a hack.
+# There's various queries whose response blocks don't have an end-marker
+# consistent over all common IRC dialects; culprits include LUSERS and ADMIN.
+# However, virtually all modern IRC servers implement PONG responses that
+# return the first argument as specified in the answered PING; this behaviour
+# doesn't at all reflect the descriptions in RFC 1459 or 2812, but can be
+# relied upon in practice.
+# We can exploit this behaviour to get a clear end-marker for any block request,
+# though there is a potential for race conditions here. Filtering out
+# non-numeric lines takes care of most of this; spurious numerics are very
+# rare.
+@_BlockQuery.reg_class
+class BlockQueryGeneric(_BlockQuery):
+   cmd = None
+   def __init__(self, *args, **kwargs):
+      import random
+      _BlockQuery.__init__(self, *args, **kwargs)
+      self.stop_tok = bytes(random.getrandbits(64))
+      self.active = False
+   
+   def put_req(self, conn):
+      conn.send_msg(self.msg.command, self.msg.parameters)
+      conn.send_msg('PING', (self.stop_tok,))
+      self.active = True
+   
+   def process_data(self, msg):
+      if (not self.active):
+         return False
+      cmd = msg.command
+      try:
+         num = int(cmd)
+      except ValueError:
+         if ((cmd.upper() == 'PONG') and (len(cmd.parameters) > 0) and
+             (parameters[0] == self.stop_tok)):
+            self.active = False
+            self.callback(self)
+            raise QueryFinish()
+         return False
+      
+      self.rv.append(msg)
+      return True
+
+
+@_BlockQuery.reg_class
+class BlockQueryWHOIS(_BlockQuery):
+   cmd = 'WHOIS'
+   end_num = 318
+   start_nums = set((311,312,313,317,end_num,319))
+   
+   def __init__(self, msg, *args, **kwargs):
+      _BlockQuery.__init__(self, msg, *args, **kwargs)
+      pc = len(self.msg.parameters)
+      if (pc < 1):
+         self.target = None
+      else:
+         self.target = IRCAddress(self.msg.parameters[(pc > 1)])
+   
+   def get_msg_barriers(self, msg):
+      cmd = msg.command
+      try:
+         cmd_i = int(cmd)
+      except ValueError:
+         return (False, False)
+      pc = len(msg.parameters)
+      if (cmd_i == 431):
+         if (self.target is None):
+            # What was our client thinking?
+            return (True, True)
+         # This wasn't our fault. Go on.
+         return (False, False)
+      
+      if (pc < 2):
+         return (False, False)
+      target = IRCAddress(msg.parameters[1])
+      if (target != self.target):
+         return (False, False)
+      
+      if (cmd_i in self.start_nums):
+         return (True, (cmd_i == self.end_num))
+      return (False, False)
+
+
+@_BlockQuery.reg_class
+class BlockQueryWHOWAS(BlockQueryWHOIS):
+   cmd = 'WHOWAS'
+   end_num = 369
+   start_nums = set((314,312,313,317,end_num,319))
+   
+   def __init__(self, msg, *args, **kwargs):
+      _BlockQuery.__init__(self, msg, *args, **kwargs)
+      pc = len(self.msg.parameters)
+      if (pc < 1):
+         self.target = None
+      else:
+         self.target = IRCAddress(self.msg.parameters[0])
 
 
 class IRCClientConnection(AsyncLineStream):
@@ -217,7 +360,7 @@ class IRCClientConnection(AsyncLineStream):
       try:
          cmd_str = msg.command.decode('ascii')
       except UnicodeDecodeError:
-         pass
+         self.log(20, 'Peer {0} sent unknown message {1}.'.format(self.peer_address, msg))
       else:
          fn = '_process_msg_{0}'.format(cmd_str)
          try:
@@ -508,6 +651,12 @@ class IRCClientConnection(AsyncLineStream):
          chan.users[nick] = set()
          for b in b2b(nick_str[:i]):
             chan.users[nick].add(self.chm_parser.uflags2modes[b])
+   
+   # Things not impacting connection state
+   def _process_msg_PRIVMSG(self, msg):
+      pass
+   def _process_msg_NOTICE(self, msg):
+      pass
 
 # ---------------------------------------------------------------- test code
 class __ChanEcho:
