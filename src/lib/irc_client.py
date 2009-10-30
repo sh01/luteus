@@ -20,161 +20,10 @@ import logging
 from .event_multiplexing import OrderingEventMultiplexer, ccd
 from gonium.fdm.stream import AsyncLineStream
 
+from .s2c_structures import *
 
 def b2b(bseq):
    return (chr(x).encode('ascii') for x in bseq)
-
-
-class IRCProtocolError(ValueError):
-   def __init__(self, msg, *args, **kwargs):
-      self.msg = msg
-      ValueError.__init__(self, *args, **kwargs)
-
-# IRC Address Types
-IA_SERVER = 0
-IA_NICK = 1
-
-class IRCAddress(bytes):
-   def __init__(self, *args, **kwargs):
-      bytes.__init__(self, *args, **kwargs)
-      if not (b'!' in self):
-         if (b'.' in self):
-            self.type = IA_SERVER
-         else:
-            self.type = IA_NICK
-            self.nick = IRCNick(self)
-            self.hostmask = None
-            self.user = None
-         return
-      
-      self.type = IA_NICK
-      (nick, rest) = self.split(b'!',1)
-      self.nick = IRCNick(nick)
-      (user, hostmask) = rest.split(b'@',1)
-      self.hostmask = hostmask
-   
-   def target_get(self):
-      """Return target bytes sequence"""
-      if (self.type == IA_SERVER):
-         return self
-      return self.nick
-   
-   def irc_eq(self, other):
-      """IRC equality testing"""
-      if (self.type != other.type):
-         return False
-      if (self.type == IA_SERVER):
-         return (self == other)
-      return (self.nick == other.nick)
-
-
-class IRCNick(bytes):
-   LOWERMAP = bytearray(range(256))
-   for i in range(ord(b'A'), ord(b'Z')+1):
-      LOWERMAP[i] = ord(chr(i).lower())
-   LOWERMAP[ord(b'[')] = ord(b'{')
-   LOWERMAP[ord(b']')] = ord(b'}')
-   LOWERMAP[ord(b'\\')] = ord(b'|')
-   LOWERMAP[ord(b'~')] = ord(b'^')
-   LOWERMAP = bytes(LOWERMAP)
-   
-   def __eq__(self, other):
-      return (self.translate(self.LOWERMAP) == other.translate(self.LOWERMAP))
-   def __neq__(self, other):
-      return not (self == other)
-   def __hash__(self):
-      return bytes.__hash__(self.translate(self.LOWERMAP))
-   # FIXME: add ordering
-
-
-class IRCMessage:
-   """An IRC message, as defined by RFC 2812"""
-   def __init__(self, prefix:bytes, command:bytes, parameters:bytes):
-      self.prefix = prefix
-      self.command = command
-      self.parameters = parameters
-   
-   @classmethod
-   def build_from_line(cls, line):
-      """Build instance from raw line"""
-      line_split = line.split(b' ') # RFC 2812 says this is correct.
-      if (line.startswith(b':')):
-         prefix = IRCAddress(line_split[0][1:])
-         command = line_split[1]
-         parameters = line_split[2:]
-      else:
-         prefix = None
-         command = line_split[0]
-         parameters = line_split[1:]
-      
-      i = 0
-      while (i < len(parameters)):
-         p = parameters[i]
-         if not (p.startswith(b':')):
-            i += 1
-            continue
-         parameters[i] = b' '.join([parameters[i][1:]] + parameters[i+1:])
-         del(parameters[i+1:])
-         break
-      return cls(prefix, command, tuple(parameters))
-   
-   def line_build(self):
-      if (self.prefix is None):
-         prefix = []
-      else:
-         prefix = [b':' + self.prefix]
-      
-      params_out = list(self.parameters)
-      params_out[-1] = b':' + params_out[-1]
-      
-      for param in params_out[:-1]:
-         if (b' ' in param):
-            raise ValueError('Parameter list {0} contains non-last'
-               'parameter containing a space.'.format(params_out))
-      
-      return b' '.join(prefix + [self.command] + params_out) + b'\r\n'
-   
-   def __repr__(self):
-      return '{0}.build_from_line({1!a})'.format(
-         self.__class__.__name__, self.line_build()[:-1])
-
-
-class IRCChannel:
-   def __init__(self, chan, topic=None, users=None, modes=None,
-         expect_part=False):
-      self.chan = chan
-      self.topic = topic
-      self.users = users
-      if (modes is None):
-         modes = {}
-      self.modes = modes
-      self.expect_part = expect_part
-   def __repr__(self):
-      return '{0}({1}, {2}, {3}, {4}, {5})'.format(self.__class__.__name__,
-         self.chan, self.topic, self.users, self.modes, self.expect_part)
-
-
-class Mode:
-   def __init__(self, char, level):
-      self.char = char
-      self.level = level
-   
-   def __repr__(self):
-      return '{0}({1},{2})'.format(self.__class__.__name__, self.char, self.level)
-   def __le__(self, other):
-      return (self.level <= other.level)
-   def __lt__(self, other):
-      return (self.level < other.level)
-   def __ge__(self, other):
-      return (self.level <= other.level)
-   def __gt__(self, other):
-      return (self.level > other.level)
-   def __eq__(self, other):
-      return (self.char == other.char)
-   def __neq__(self, other):
-      return (self.char != other.char)
-   def __hash__(self):
-      return hash(self.char)
 
 
 class ChannelModeParser:
@@ -306,8 +155,9 @@ class IRCClientConnection(AsyncLineStream):
    
    IRCNICK_INITCHARS = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}'
    
-   EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_out_msg', 'em_link_finish',
-      'em_shutdown', 'em_chmode', 'em_chan_join', 'em_chan_leave')
+   EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_in_msg_ap', 'em_out_msg',
+      'em_link_finish', 'em_shutdown', 'em_chmode', 'em_chan_join',
+      'em_chan_leave')
    #calling conventions:
    # em_in_raw(msg: bytearray)
    # em_in_msg(msg: IRCMessage)
@@ -364,7 +214,6 @@ class IRCClientConnection(AsyncLineStream):
       if (self.em_in_msg(msg)):
          return
       
-      got_func = False
       try:
          cmd_str = msg.command.decode('ascii')
       except UnicodeDecodeError:
@@ -374,7 +223,8 @@ class IRCClientConnection(AsyncLineStream):
          try:
             func = getattr(self,fn)
          except AttributeError:
-            pass
+            self.log(20, 'Peer {0} sent unknown message {1}.'.format(self.peer_address, msg))
+            
          else:
             if (cmd_str.isdigit()):
                # Numeric replies are always targeted to our nick.
@@ -392,22 +242,16 @@ class IRCClientConnection(AsyncLineStream):
             try:
                func(msg)
             except IRCProtocolError as exc:
-               self.log(30, 'From {0}: msg {1} failed to parse: {2}'.format(
+               self.log(30, 'From {0}: msg {1} failed to process: {2}'.format(
                   self.peer_address, msg, exc), exc_info=True)
-            got_func = True
       
-      if (got_func is False):
-         self.log(20, 'Peer {0} sent unknown message {1}.'.format(self.peer_address, msg))
+      self.em_in_msg_ap(msg)
    
    def send_msg(self, command, *parameters):
       """Send MSG to peer."""
       msg = IRCMessage(None, command, parameters)
       self.em_out_msg(msg)
       line_out = msg.line_build()
-      if ((b'\x00' in line_out) or (b'\x0a' in line_out[:-2]) or
-         (b'\r' in line_out[:-2])):
-         raise ValueError('Trying to send line {0!a}, which contains an invalid'
-            ' char.'.format(line_out))
       self.send_bytes((line_out,))
    
    @classmethod
@@ -519,12 +363,14 @@ class IRCClientConnection(AsyncLineStream):
             self.em_chan_leave(nick, chan, perpetrator)
             
             if (nick != self.nick):
-               del(chan.users[nick])
+               try:
+                  del(chan.users[nick])
+               except KeyError as exc:
+                  raise IRCProtocolError('KICKed nick {0!a} not on chan.'.format(nick)) from exc
             
-            if (nick == self.nick):
-               # Our part.
-               del(self.channels[chnn])
-               break
+            # Our part.
+            del(self.channels[chnn])
+            break
    
    def _process_msg_MODE(self, msg):
       """Process MODE message."""
@@ -648,6 +494,8 @@ class IRCClientConnection(AsyncLineStream):
       """Process RPL_NAMREPLY message."""
       self._pc_check(msg, 4)
       chan = self.channels[bytes(msg.parameters[2])]
+      if not (chan in self.channels):
+         raise IRCProtocolError(msg, "Not on chan {0!a}.".format(chan))
       chan.users = {}
       for nick_str in msg.parameters[3].split(b' '):
          i = 0
