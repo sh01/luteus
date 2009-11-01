@@ -20,7 +20,9 @@ import logging
 from .event_multiplexing import OrderingEventMultiplexer, ccd
 from gonium.fdm.stream import AsyncLineStream
 
+from .irc_num_constants import *
 from .s2c_structures import *
+
 
 def b2b(bseq):
    return (chr(x).encode('ascii') for x in bseq)
@@ -179,8 +181,18 @@ class _BlockQuery:
    def get_msg_barriers(self, msg):
       raise NotImplementedError('Not done here; use a subclass instead.')
    
+   def is_tryagain(self, msg, num):
+      return ((num == RPL_TRYAGAIN) and (len(msg.parameters) > 0) and
+         (msg.parameters[0].upper() == self.msg.command.upper()))
+
    def process_data(self, msg):
-      (is_start, is_end) = self.get_msg_barriers(msg)
+      if (self.is_tryagain(msg, msg.get_cmd_numeric())):
+         # Server didn't feel like processing this command.
+         is_start = True
+         is_end = True
+      else:
+         (is_start, is_end) = self.get_msg_barriers(msg)
+      
       if (not self.active):
          if (is_start):
             self.active = True
@@ -224,9 +236,7 @@ class BlockQueryGeneric(_BlockQuery):
       if (not self.active):
          return False
       cmd = msg.command
-      try:
-         num = int(cmd)
-      except ValueError:
+      if (msg.get_cmd_numeric() is None):
          if ((cmd.upper() == 'PONG') and (len(cmd.parameters) > 0) and
              (parameters[0] == self.stop_tok)):
             self.active = False
@@ -253,20 +263,19 @@ class BlockQueryWHOIS(_BlockQuery):
          self.target = IRCAddress(self.msg.parameters[(pc > 1)])
    
    def get_msg_barriers(self, msg):
-      cmd = msg.command
-      try:
-         cmd_i = int(cmd)
-      except ValueError:
+      cmd_i = msg.get_cmd_numeric()
+      
+      if (cmd_i is None):
          return (False, False)
-      pc = len(msg.parameters)
-      if (cmd_i == 431):
+      
+      if (cmd_i == ERR_NONICKNAMEGIVEN):
          if (self.target is None):
             # What was our client thinking?
             return (True, True)
          # This wasn't our fault. Go on.
          return (False, False)
       
-      if (pc < 2):
+      if (len(msg.parameters) < 2):
          return (False, False)
       target = IRCAddress(msg.parameters[1])
       if (target != self.target):
@@ -290,6 +299,22 @@ class BlockQueryWHOWAS(BlockQueryWHOIS):
          self.target = None
       else:
          self.target = IRCAddress(self.msg.parameters[0])
+
+@_BlockQuery.reg_class
+class BlockQueryLINKS(_BlockQuery):
+   cmd = 'LINKS'
+   def get_msg_barriers(self, msg):
+      num = msg.get_cmd_numeric()
+      return (num in (ERR_NOSUCHSERVER, RPL_LINKS),
+      (num == RPL_ENDOFLINKS))
+
+@_BlockQuery.reg_class
+class BlockQueryLIST(_BlockQuery):
+   cmd = 'LIST'
+   def get_msg_barriers(self, msg):
+      num = msg.get_cmd_numeric()
+      return (num in (RPL_LISTSTART, RPL_LIST, RPL_LISTEND),
+         (num == RPL_LISTEND))
 
 
 class IRCClientConnection(AsyncLineStream):
