@@ -160,10 +160,9 @@ class _BlockQuery:
    
    @classmethod
    def reg_class(cls, cls_new):
-      cmd = cls_new.cmd
-      if not (cmd is None):
-         cmd = cmd.upper()
-      cls.BQTypes[cmd] = cls_new
+      for cmd in cls_new.cmds:
+         cls.BQTypes[cmd.upper()] = cls_new
+      
       return cls_new
    
    @classmethod
@@ -181,13 +180,15 @@ class _BlockQuery:
    def get_msg_barriers(self, msg):
       raise NotImplementedError('Not done here; use a subclass instead.')
    
-   def is_tryagain(self, msg, num):
-      return ((num == RPL_TRYAGAIN) and (len(msg.parameters) > 0) and
-         (msg.parameters[0].upper() == self.msg.command.upper()))
+   def is_genericfail(self, msg):
+      num = msg.get_cmd_numeric()
+      return ((num in (RPL_TRYAGAIN, ERR_UNKNOWNCOMMAND)) and
+         (len(msg.parameters) > 1) and
+         (msg.parameters[1].upper() == self.msg.command.upper()))
 
    def process_data(self, msg):
-      if (self.is_tryagain(msg, msg.get_cmd_numeric())):
-         # Server didn't feel like processing this command.
+      if (self.is_genericfail(msg)):
+         # Server didn't like this command.
          is_start = True
          is_end = True
       else:
@@ -218,9 +219,13 @@ class _BlockQuery:
 # though there is a potential for race conditions here. Filtering out
 # non-numeric lines takes care of most of this; spurious numerics are very
 # rare.
+# MAP is a pretty bad offender, too; different ircds don't agree about the
+# format of the data lines used, never mind start and end markers. Some limit
+# the command to opers, so there's also the fun problem of accounting for all
+# possible errors.
 @_BlockQuery.reg_class
 class BlockQueryGeneric(_BlockQuery):
-   cmd = None
+   cmds = ('ADMIN', 'LUSERS', 'MAP')
    def __init__(self, *args, **kwargs):
       import random
       _BlockQuery.__init__(self, *args, **kwargs)
@@ -250,7 +255,7 @@ class BlockQueryGeneric(_BlockQuery):
 
 @_BlockQuery.reg_class
 class BlockQueryWHOIS(_BlockQuery):
-   cmd = 'WHOIS'
+   cmds = ('WHOIS',)
    end_num = RPL_ENDOFWHOIS
    start_nums = set((RPL_WHOISUSER, RPL_WHOISSERVER, RPL_WHOISOPERATOR,
       RPL_WHOISIDLE, end_num, RPL_WHOISCHANNELS))
@@ -289,7 +294,7 @@ class BlockQueryWHOIS(_BlockQuery):
 
 @_BlockQuery.reg_class
 class BlockQueryWHOWAS(BlockQueryWHOIS):
-   cmd = 'WHOWAS'
+   cmds = ('WHOWAS',)
    end_num = RPL_ENDOFWHOWAS
    start_nums = set((RPL_WHOWASUSER, RPL_WHOISSERVER, RPL_WHOISOPERATOR,
       RPL_WHOISIDLE, end_num, RPL_WHOISCHANNELS))
@@ -302,17 +307,19 @@ class BlockQueryWHOWAS(BlockQueryWHOIS):
       else:
          self.target = IRCAddress(self.msg.parameters[0])
 
+
 @_BlockQuery.reg_class
 class BlockQueryLINKS(_BlockQuery):
-   cmd = 'LINKS'
+   cmds = ('LINKS',)
    def get_msg_barriers(self, msg):
       num = msg.get_cmd_numeric()
       return (num in (ERR_NOSUCHSERVER, RPL_LINKS),
       (num == RPL_ENDOFLINKS))
 
+
 @_BlockQuery.reg_class
 class BlockQueryLIST(_BlockQuery):
-   cmd = 'LIST'
+   cmds = ('LIST',)
    def get_msg_barriers(self, msg):
       num = msg.get_cmd_numeric()
       return (num in (RPL_LISTSTART, RPL_LIST, RPL_LISTEND),

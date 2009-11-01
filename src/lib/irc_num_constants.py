@@ -46,7 +46,9 @@ __NUM_specs = (
    (406, 'ERR_WASNOSUCHNICK'),
    (407, 'ERR_TOOMANYTARGETS'),
    (409, 'ERR_NOORIGIN'),
-   (431, 'ERR_NONICKNAMEGIVEN')
+   (421, 'ERR_UNKNOWNCOMMAND'),
+   (431, 'ERR_NONICKNAMEGIVEN'),
+   (481, 'ERR_NOPRIVILEGES')
 )
 
 for (num, name) in __NUM_specs:
