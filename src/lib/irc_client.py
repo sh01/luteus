@@ -251,8 +251,9 @@ class BlockQueryGeneric(_BlockQuery):
 @_BlockQuery.reg_class
 class BlockQueryWHOIS(_BlockQuery):
    cmd = 'WHOIS'
-   end_num = 318
-   start_nums = set((311,312,313,317,end_num,319))
+   end_num = RPL_ENDOFWHOIS
+   start_nums = set((RPL_WHOISUSER, RPL_WHOISSERVER, RPL_WHOISOPERATOR,
+      RPL_WHOISIDLE, end_num, RPL_WHOISCHANNELS))
    
    def __init__(self, msg, *args, **kwargs):
       _BlockQuery.__init__(self, msg, *args, **kwargs)
@@ -289,8 +290,9 @@ class BlockQueryWHOIS(_BlockQuery):
 @_BlockQuery.reg_class
 class BlockQueryWHOWAS(BlockQueryWHOIS):
    cmd = 'WHOWAS'
-   end_num = 369
-   start_nums = set((314,312,313,317,end_num,319))
+   end_num = RPL_ENDOFWHOWAS
+   start_nums = set((RPL_WHOWASUSER, RPL_WHOISSERVER, RPL_WHOISOPERATOR,
+      RPL_WHOISIDLE, end_num, RPL_WHOISCHANNELS))
    
    def __init__(self, msg, *args, **kwargs):
       _BlockQuery.__init__(self, msg, *args, **kwargs)
