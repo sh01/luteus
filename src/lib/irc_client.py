@@ -16,6 +16,9 @@
 # along with luteus.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
+import time
+
+from collections import deque
 
 from .event_multiplexing import OrderingEventMultiplexer, ccd
 from gonium.fdm.stream import AsyncLineStream
@@ -27,6 +30,9 @@ from .s2c_structures import *
 def b2b(bseq):
    return (chr(x).encode('ascii') for x in bseq)
 
+def build_ping_tok():
+   import random
+   return ('{0:x}'.format(random.getrandbits(64)).encode('ascii'))
 
 class ChannelModeParser:
    def __init__(self,
@@ -143,9 +149,6 @@ class ChannelModeParser:
          raise IRCProtocolError('Failed to parse MODE.') from exc
 
 
-class QueryFinish(BaseException):
-   pass
-
 class _BlockQuery:
    BQTypes = {}
    cmd = None
@@ -158,6 +161,18 @@ class _BlockQuery:
       self.active = False
       self.rv = []
    
+   @staticmethod
+   def _donothing(*args, **kwargs):
+      pass
+   
+   def void(self):
+      self.callback = self._donothing
+   
+   def timeout(self):
+      self.active = False
+      self.rv = []
+      self.callback(self)
+   
    @classmethod
    def reg_class(cls, cls_new):
       for cmd in cls_new.cmds:
@@ -167,15 +182,10 @@ class _BlockQuery:
    
    @classmethod
    def build(cls, msg, *args, **kwargs):
-      try:
-         cls_sub = cls.BQTYPES[msg.command.upper()]
-      except KeyError:
-         cls_sub = cls.BQTYPES[None]
-      
-      return cls_sub(msg, *args, **kwargs)
+      return cls.BQTypes[msg.command.upper()](msg, *args, **kwargs)
    
    def put_req(self, conn):
-      conn.send_msg(self.msg.command, self.msg.parameters)
+      conn._send_msg(self.msg.command, *self.msg.parameters)
    
    def get_msg_barriers(self, msg):
       raise NotImplementedError('Not done here; use a subclass instead.')
@@ -204,7 +214,7 @@ class _BlockQuery:
       if (is_end):
          self.active = False
          self.callback(self)
-         raise QueryFinish()
+         return 2
       
       return True
 
@@ -225,16 +235,15 @@ class _BlockQuery:
 # possible errors.
 @_BlockQuery.reg_class
 class BlockQueryGeneric(_BlockQuery):
-   cmds = ('ADMIN', 'LUSERS', 'MAP')
+   cmds = (b'ADMIN', b'LUSERS', b'MAP')
    def __init__(self, *args, **kwargs):
-      import random
       _BlockQuery.__init__(self, *args, **kwargs)
-      self.stop_tok = bytes(random.getrandbits(64))
+      self.stop_tok = build_ping_tok()
       self.active = False
    
    def put_req(self, conn):
-      conn.send_msg(self.msg.command, self.msg.parameters)
-      conn.send_msg('PING', (self.stop_tok,))
+      conn._send_msg(self.msg.command, *self.msg.parameters)
+      conn._send_msg(b'PING', self.stop_tok)
       self.active = True
    
    def process_data(self, msg):
@@ -242,11 +251,11 @@ class BlockQueryGeneric(_BlockQuery):
          return False
       cmd = msg.command
       if (msg.get_cmd_numeric() is None):
-         if ((cmd.upper() == 'PONG') and (len(cmd.parameters) > 0) and
-             (parameters[0] == self.stop_tok)):
+         if ((cmd.upper() == b'PONG') and (len(msg.parameters) == 2) and
+             (msg.parameters[1] == self.stop_tok)):
             self.active = False
             self.callback(self)
-            raise QueryFinish()
+            return 2
          return False
       
       self.rv.append(msg)
@@ -255,7 +264,7 @@ class BlockQueryGeneric(_BlockQuery):
 
 @_BlockQuery.reg_class
 class BlockQueryWHOIS(_BlockQuery):
-   cmds = ('WHOIS',)
+   cmds = (b'WHOIS',)
    end_num = RPL_ENDOFWHOIS
    start_nums = set((RPL_WHOISUSER, RPL_WHOISSERVER, RPL_WHOISOPERATOR,
       RPL_WHOISIDLE, end_num, RPL_WHOISCHANNELS))
@@ -294,7 +303,7 @@ class BlockQueryWHOIS(_BlockQuery):
 
 @_BlockQuery.reg_class
 class BlockQueryWHOWAS(BlockQueryWHOIS):
-   cmds = ('WHOWAS',)
+   cmds = (b'WHOWAS',)
    end_num = RPL_ENDOFWHOWAS
    start_nums = set((RPL_WHOWASUSER, RPL_WHOISSERVER, RPL_WHOISOPERATOR,
       RPL_WHOISIDLE, end_num, RPL_WHOISCHANNELS))
@@ -310,7 +319,7 @@ class BlockQueryWHOWAS(BlockQueryWHOIS):
 
 @_BlockQuery.reg_class
 class BlockQueryLINKS(_BlockQuery):
-   cmds = ('LINKS',)
+   cmds = (b'LINKS',)
    def get_msg_barriers(self, msg):
       num = msg.get_cmd_numeric()
       return (num in (ERR_NOSUCHSERVER, RPL_LINKS),
@@ -319,7 +328,7 @@ class BlockQueryLINKS(_BlockQuery):
 
 @_BlockQuery.reg_class
 class BlockQueryLIST(_BlockQuery):
-   cmds = ('LIST',)
+   cmds = (b'LIST',)
    def get_msg_barriers(self, msg):
       num = msg.get_cmd_numeric()
       return (num in (RPL_LISTSTART, RPL_LIST, RPL_LISTEND),
@@ -327,25 +336,37 @@ class BlockQueryLIST(_BlockQuery):
 
 
 class IRCClientConnection(AsyncLineStream):
-   logger = logging.getLogger('IRCConnection')
+   logger = logging.getLogger('IRCClientConnection')
    log = logger.log
    
    IRCNICK_INITCHARS = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}'
    
-   EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_in_msg_ap', 'em_out_msg',
-      'em_link_finish', 'em_shutdown', 'em_chmode', 'em_chan_join',
-      'em_chan_leave')
+   timeout = 64
+   maintenance_delay = 32
+   
+   EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_in_msg_bc', 'em_in_msg_ap',
+      'em_out_msg', 'em_link_finish', 'em_shutdown', 'em_chmode',
+      'em_chan_join', 'em_chan_leave')
    #calling conventions:
-   # em_in_raw(msg: bytearray)
-   # em_in_msg(msg: IRCMessage)
+   # Raw lines. Modify to modify what the parser sees.
+   # Retval is ignored.
+   #    em_in_raw(msg: bytearray)
+   #
+   # Messages, raw, all of them.
+   # Return True to stop any later processing.
+   #    em_in_msg(msg: IRCMessage)
+   #
+   # Message broadcasts; as above, if not eaten by em_in_msg or query slicers.
+   # Retval is ignored.
+   #    em_in_msg_bc(msg: IRCMessage)
+   #
    # em_link_finish()
    # em_chan_join(nick, chan)
    #   <nick> is None for self-joins
    # em_chan_leave(victim, chan, perpetrator)
    #   <victim> is None for self-leaves
    #   <perpetrator> is None for PARTs and self-kicks
-   
-   def __init__(self, *args, nick, username, realname, mode=0, chm_parser=None,
+   def __init__(self, ed, *args, nick, username, realname, mode=0, chm_parser=None,
          **kwargs):
       if (isinstance(nick, str)):
          nick = nick.encode('ascii')
@@ -370,37 +391,98 @@ class IRCClientConnection(AsyncLineStream):
       self.motd = None
       self.motd_pending = None
       self.channels = {}
+      self.query_queue = deque()
+      self.pending_query = None
+      self.ping_tok = None
+      self.ts_last_in = time.time()
       
       for name in self.EM_NAMES:
          self.em_new(name)
+         
+      self.timer_maintenance = ed.set_timer(self.maintenance_delay,
+         self._perform_maintenance, parent=self, persist=True)
       
-      AsyncLineStream.__init__(self, *args, lineseps={b'\n', b'\r'}, **kwargs)
+      AsyncLineStream.__init__(self, ed, *args, lineseps={b'\n', b'\r'}, **kwargs)
    
    def em_new(self, attr):
       """Instantiate new EventMultiplexer attribute"""
       setattr(self, attr, OrderingEventMultiplexer(self))
    
+   def _check_queries(self):
+      if not (self.pending_query is None):
+         return
+      if (len(self.query_queue) == 0):
+         return
+      self.pending_query = self.query_queue.popleft()
+      self.ping_fresh = False
+      self.pending_query.put_req(self)
+   
+   def _send_ping(self):
+      self.ping_tok = tok = build_ping_tok()
+      self._send_msg(b'PING', tok)
+      self.ping_fresh = True
+   
+   def _perform_maintenance(self):
+      self._send_ping()
+      idle_time = (time.time() - self.ts_last_in)
+      if (idle_time >= self.timeout):
+         if (idle_time >= (idle_time <= self.timeout + self.maintenance_delay + 16)):
+            # Not likely.
+            self.log(30, '{0} allegedly {1} seconds idle; major clock warp?'
+            .format(self, idle_time))
+            self.ts_last_in = time.time()
+         else:
+            self.log(30, '{0} timed out.'.format(self))
+            self.close()
+   
+   def put_msg(self, msg, callback, force_bc=False):
+      if (not force_bc):
+         try:
+            query = _BlockQuery.build(msg, callback)
+         except KeyError:
+            pass
+         else:
+            self.query_queue.append(query)
+            self._check_queries()
+            return query
+      
+      self._send_msg(msg.command, *msg.parameters)
+      
    def process_input(self, line_data_mv):
       """Process IRC data"""
+      # TODO: Move this up the callstack? It's kinda unclean to keep it here.
+      self.ts_last_in = time.time()
+      
       line_data = bytearray(bytes(line_data_mv).rstrip(b'\r\n'))
       if (self.em_in_raw(line_data)):
          return
       if (line_data == b''):
          return
       msg = IRCMessage.build_from_line(line_data)
+      
+      if (self.pending_query):
+         is_query_related = self.pending_query.process_data(msg)
+         if (is_query_related == 2):
+            self.pending_query = None
+      else:
+         is_query_related = False
+      
       if (self.em_in_msg(msg)):
          return
+      
+      if not (is_query_related):
+         self.em_in_msg_bc(msg)
       
       try:
          cmd_str = msg.command.decode('ascii')
       except UnicodeDecodeError:
-         self.log(20, 'Peer {0} sent unknown message {1}.'.format(self.peer_address, msg))
+         self.log(30, 'Peer {0} sent unknown message {1}.'.format(self.peer_address, msg))
       else:
          fn = '_process_msg_{0}'.format(cmd_str)
          try:
             func = getattr(self,fn)
          except AttributeError:
-            self.log(20, 'Peer {0} sent unknown message {1}.'.format(self.peer_address, msg))
+            self.log(10, 'Peer {0} sent unknown message {1}.'.format(self.peer_address, msg))
             
          else:
             if (cmd_str.isdigit()):
@@ -424,8 +506,8 @@ class IRCClientConnection(AsyncLineStream):
       
       self.em_in_msg_ap(msg)
    
-   def send_msg(self, command, *parameters):
-      """Send MSG to peer."""
+   def _send_msg(self, command, *parameters):
+      """Send MSG to peer immediately."""
       msg = IRCMessage(None, command, parameters)
       self.em_out_msg(msg)
       line_out = msg.line_build()
@@ -450,17 +532,34 @@ class IRCClientConnection(AsyncLineStream):
    
    def _process_connect(self):
       """Process connect finish."""
-      self.send_msg(b'NICK', self.wnick)
-      self.send_msg(b'USER', self.username, str(self.mode).encode('ascii'),
+      self._send_msg(b'NICK', self.wnick)
+      self._send_msg(b'USER', self.username, str(self.mode).encode('ascii'),
          b'*', self.realname)
    
    def process_close(self):
       """Process connection closing."""
+      self.timer_maintenance.cancel()
       self.em_shutdown()
    
    def _process_msg_PING(self, msg):
       """Answer PING."""
-      self.send_msg(b'PONG', *msg.parameters)
+      self._send_msg(b'PONG', *msg.parameters)
+   
+   def _process_msg_PONG(self, msg):
+      """Process PONG."""
+      if (len(msg.parameters) != 2):
+         return
+      if (msg.parameters[1] != self.ping_tok):
+         return
+      if (self.ping_fresh and not (self.pending_query is None)):
+         self.log(40, 'Query {0} on {1} timed out; switching to emergency broadcasting. Accumulated data: {2}'
+            .format(self.pending_query, self, self.pending_query.rv))
+         for msg in self.pending_query:
+            self.em_in_msg_bc(msg)
+         
+         self.pending_query.timeout()
+         self.pending_query = None
+         self._check_queries()
    
    def _process_msg_JOIN(self, msg):
       """Process JOIN message."""
@@ -701,7 +800,7 @@ class __ChanEcho:
          def _info_print(*args, **kwargs):
             if (not conn):
                return
-            conn.send_msg(b'PRIVMSG', chan, '{0}: {1} {2}'.format(n, args, kwargs).encode('ascii'))
+            conn._send_msg(b'PRIVMSG', chan, '{0}: {1} {2}'.format(n, args, kwargs).encode('ascii'))
          
          return _info_print
       
@@ -716,12 +815,15 @@ class __ChanEcho:
 
 def _selftest(target, nick='Zanaffar', username='chimera', realname=b'? ? ?',
       channels=()):
+   import pprint
    from gonium.fdm import ED_get
    from gonium._debugging import streamlogger_setup
    
+   logging.getLogger('IRCClientConnection').setLevel(20)
+   
    def link():
       for chan in channels:
-         irccc.send_msg(b'JOIN', chan)
+         irccc._send_msg(b'JOIN', chan)
    
    streamlogger_setup()
    ed = ED_get()()
@@ -730,8 +832,16 @@ def _selftest(target, nick='Zanaffar', username='chimera', realname=b'? ? ?',
    irccc.em_shutdown.new_listener(ccd(1)(ed.shutdown))
    irccc.em_link_finish.new_listener(ccd(1)(link))
    
+   def cb_print(query):
+      print(query)
+      pprint.pprint(query.rv)
+   
+   for (d, cmd) in ((2, b'LINKS'), (5, b'LIST'), (8, b'MAP')):
+      ed.set_timer(d, irccc.put_msg, args=(IRCMessage(None, cmd,()), cb_print))
+   
    if (channels):
-      __ChanEcho(irccc, channels[0])
+      #__ChanEcho(irccc, channels[0])
+      pass
    
    ed.event_loop()
 

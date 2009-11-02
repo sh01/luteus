@@ -116,12 +116,14 @@ class IRCMessage:
          prefix = [b':' + self.prefix]
       
       params_out = list(self.parameters)
-      params_out[-1] = b':' + params_out[-1]
+      if (params_out and (b' ' in params_out[-1])):
+         params_out[-1] = b':' + params_out[-1]
       
       for param in params_out[:-1]:
          if (b' ' in param):
             raise ValueError('Parameter list {0} contains non-last'
                'parameter containing a space.'.format(params_out))
+      
       rv = b' '.join(prefix + [self.command] + params_out) + b'\r\n'
       
       if (sanity_check and ((b'\x00' in rv) or (b'\n' in rv[:-2]) or
