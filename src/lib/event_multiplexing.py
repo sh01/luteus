@@ -83,7 +83,7 @@ class OrderingEventMultiplexer(EventMultiplexer):
             return True
          except BaseException as exc:
             self.log(40, '{0} caught exception in handler called with params'
-               '(*{1}, **{2}):' % (self, args, kwargs), exc_info=True)
+               '(*{1}, **{2}):'.format(self, args, kwargs), exc_info=True)
          
       return False
 
