@@ -19,6 +19,7 @@ import logging
 import socket
 from collections import deque
 
+from .event_multiplexing import OrderingEventMultiplexer
 from .s2c_structures import IRCMessage
 from .irc_client import IRCClientConnection
 from .irc_num_constants import *
@@ -84,12 +85,15 @@ class IRCClientNetworkLink:
    logger = logging.getLogger('IRCClientNetworkLink')
    log = logger.log
    
+   ircc_cls = IRCClientConnection
+   
    link_timeout = 30
    
    def __init__(self, ed, user_spec, servers, conn_delay_is=10):
       self.ed = ed
       self.us = user_spec
       self.conn = None
+      self.conn_els = list()
       
       self.servers = list(servers)
       self.servers.sort()
@@ -97,6 +101,14 @@ class IRCClientNetworkLink:
       
       self.delay_conn_is = conn_delay_is
       self.timer_connect = None
+      
+      self.em_names = self.ircc_cls.EM_NAMES
+      for em_name in self.em_names:
+         self.em_new(em_name)
+   
+   def em_new(self, attr):
+      """Instantiate new EventMultiplexer attribute"""
+      setattr(self, attr, OrderingEventMultiplexer(self))
    
    def make_server_picker(self):
       servers_left = deque(self.servers)
@@ -138,7 +150,7 @@ class IRCClientNetworkLink:
       server = self.server_picker()
       target = (server.host, server.port)
       try:
-         conn = IRCClientConnection.irc_build_sock_connect(self.ed, target,
+         conn = self.ircc_cls.irc_build_sock_connect(self.ed, target,
             nick=nick, username=self.us.username, realname=self.us.realname,
             mode=self.us.mode)
       except socket.error as exc:
@@ -165,8 +177,8 @@ class IRCClientNetworkLink:
          tt.cancel()
          self.link_finish_process(conn)
          
-      lwl1 = conn.em_in_msg.new_listener(link_watch)
-      lwl2 = conn.em_link_finish.new_listener(link_watch_finish)
+      lwl1 = conn.em_in_msg.new_prio_listener(link_watch)
+      lwl2 = conn.em_link_finish.new_prio_listener(link_watch_finish)
       
       def timeout():
          if not (self.conn is conn):
@@ -175,12 +187,23 @@ class IRCClientNetworkLink:
             return
          conn.close()
          self.log(30, 'Connection {0!a} timeouted during link.'.format(conn))
-         self.conn = None
+         self.void_active_conn()
          self.conn_init()
       
       tt = self.ed.set_timer(self.link_timeout, timeout, parent=self)
       
       self.conn = conn
+      for emn in self.em_names:
+         sub_em = getattr(conn, emn)
+         sup_em = getattr(self, emn)
+         listener = sub_em.new_prio_listener(sup_em)
+         self.conn_els.append(listener)
+   
+   def void_active_conn(self):
+      self.conn = None
+      for el in self.conn_els:
+         el.close()
+      del(self.conn_els[:])
    
    
 def _selftest(targethost, username='chimera', realname=b'? ? ?'):
@@ -207,6 +230,8 @@ def _selftest(targethost, username='chimera', realname=b'? ? ?'):
    ed = ED_get()()
    
    irccnl = IRCClientNetworkLink(ed, us, servers, conn_delay_is=5)
+   irccnl.em_link_finish.new_prio_listener(link)
+   
    irccnl.conn_init()
    
    ed.event_loop()
