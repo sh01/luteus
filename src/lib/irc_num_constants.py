@@ -48,8 +48,16 @@ __NUM_specs = (
    (409, 'ERR_NOORIGIN'),
    (421, 'ERR_UNKNOWNCOMMAND'),
    (431, 'ERR_NONICKNAMEGIVEN'),
+   
+   # pre-reg stuff
    (432, 'ERR_ERRONEUSNICKNAME'),
-   (481, 'ERR_NOPRIVILEGES')
+   (433, 'ERR_NICKNAMEINUSE'),
+   (436, 'ERR_NICKCOLLISION'),
+   (437, 'ERR_UNAVAILRESOURCE'),
+   (451, 'ERR_NOTREGISTERED'),
+   
+   (481, 'ERR_NOPRIVILEGES'),
+   (484, 'ERR_RESTRICTED')
 )
 
 for (num, name) in __NUM_specs:

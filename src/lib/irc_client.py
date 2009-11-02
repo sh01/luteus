@@ -32,7 +32,7 @@ def b2b(bseq):
 
 def build_ping_tok():
    import random
-   return ('{0:x}'.format(random.getrandbits(64)).encode('ascii'))
+   return ('C{0:x}'.format(random.getrandbits(64)).encode('ascii'))
 
 class ChannelModeParser:
    def __init__(self,
@@ -192,9 +192,14 @@ class _BlockQuery:
    
    def is_genericfail(self, msg):
       num = msg.get_cmd_numeric()
-      return ((num in (RPL_TRYAGAIN, ERR_UNKNOWNCOMMAND)) and
+      if ((num in (RPL_TRYAGAIN, ERR_UNKNOWNCOMMAND)) and
          (len(msg.parameters) > 1) and
-         (msg.parameters[1].upper() == self.msg.command.upper()))
+         (msg.parameters[1].upper() == self.msg.command.upper())):
+         return True
+      if ((num == ERR_NOTREGISTERED) and (len(msg.parameters) > 0) and
+          (msg.parameters[0].upper() == self.msg.command.upper())):
+         return True
+      return False
 
    def process_data(self, msg):
       if (self.is_genericfail(msg)):
@@ -250,6 +255,14 @@ class BlockQueryGeneric(_BlockQuery):
       if (not self.active):
          return False
       cmd = msg.command
+      if (self.is_genericfail(msg)):
+         # At least some ircds won't even process PINGs before user login,
+         # so we should still check for this.
+         self.rv.append(msg)
+         self.active = False
+         self.callback(self)
+         return 2
+      
       if (msg.get_cmd_numeric() is None):
          if ((cmd.upper() == b'PONG') and (len(msg.parameters) == 2) and
              (msg.parameters[1] == self.stop_tok)):
@@ -398,7 +411,7 @@ class IRCClientConnection(AsyncLineStream):
       
       for name in self.EM_NAMES:
          self.em_new(name)
-         
+      
       self.timer_maintenance = ed.set_timer(self.maintenance_delay,
          self._perform_maintenance, parent=self, persist=True)
       
@@ -814,7 +827,7 @@ class __ChanEcho:
          getattr(conn, name).new_listener(ip_ret(name))
       
 
-def _selftest(target, nick='Zanaffar', username='chimera', realname=b'? ? ?',
+def _selftest(target, nick='grey_cat', username='chimera', realname=b'? ? ?',
       channels=()):
    import pprint
    from gonium.fdm import ED_get
