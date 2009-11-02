@@ -827,7 +827,7 @@ class __ChanEcho:
          getattr(conn, name).new_listener(ip_ret(name))
       
 
-def _selftest(target, nick='grey_cat', username='chimera', realname=b'? ? ?',
+def _selftest(target, nick='Zanaffar', username='chimera', realname=b'? ? ?',
       channels=()):
    import pprint
    from gonium.fdm import ED_get
