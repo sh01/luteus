@@ -52,7 +52,7 @@ class ComparableCallable:
    def __gt__(self, other):
       return (self.priority > other.priority)
    def __ge__(self, other):
-      return (self.priority < other.priority)
+      return (self.priority >= other.priority)
    
 
 # decorator
@@ -61,6 +61,7 @@ def ccd(priority):
       return ComparableCallable(wrappee, priority)
    return mc
 
+_dummy_ccd = ccd(0)(None)
 
 class OrderingEventMultiplexer(EventMultiplexer):
    logger = logging.getLogger('OrderingEventMultiplexer')
@@ -68,12 +69,13 @@ class OrderingEventMultiplexer(EventMultiplexer):
    def _listeners_order(self):
       self.listeners.sort(key=lambda l: l.callback)
    
-   def _listener_subscribe(self, *args, **kwargs):
-      EventMultiplexer._listener_subscribe(self, *args, **kwargs)
+   def _listener_subscribe(self, listener, *args, **kwargs):
+      assert((_dummy_ccd <= listener.callback) or (_dummy_ccd > listener.callback))
+      EventMultiplexer._listener_subscribe(self, listener, *args, **kwargs)
       self._listeners_order()
 
    def __call__(self, *args, **kwargs) -> bool:
-      """Multiplex event; returns if the event has been eaten completely."""
+      """Multiplex event; returns True if the event has been eaten completely."""
       for listener in copy_(self.listeners):
          try:
             listener.callback(*args, **kwargs)
