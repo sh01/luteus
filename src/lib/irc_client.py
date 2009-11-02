@@ -464,6 +464,7 @@ class IRCClientConnection(AsyncLineStream):
          is_query_related = self.pending_query.process_data(msg)
          if (is_query_related == 2):
             self.pending_query = None
+            self._check_queries()
       else:
          is_query_related = False
       
@@ -832,11 +833,23 @@ def _selftest(target, nick='Zanaffar', username='chimera', realname=b'? ? ?',
    irccc.em_shutdown.new_listener(ccd(1)(ed.shutdown))
    irccc.em_link_finish.new_listener(ccd(1)(link))
    
-   def cb_print(query):
-      print(query)
-      pprint.pprint(query.rv)
+   query_specs = (
+      (2, b'LINKS'),
+      (3, b'LIST'),
+      (4, b'MAP')
+   )
    
-   for (d, cmd) in ((2, b'LINKS'), (5, b'LIST'), (8, b'MAP')):
+   queries_answered = 0
+   def cb_print(query):
+      nonlocal queries_answered
+      print(query)
+      pprint.pprint(query.rv[:20])
+      queries_answered += 1
+      if (queries_answered == len(query_specs)):
+         print('All done. Shutting down.')
+         ed.shutdown()
+   
+   for (d, cmd) in query_specs:
       ed.set_timer(d, irccc.put_msg, args=(IRCMessage(None, cmd,()), cb_print))
    
    if (channels):
