@@ -20,7 +20,7 @@
 from copy import copy as copy_
 import logging
 
-from gonium.event_multiplexing import EventMultiplexer
+from gonium.event_multiplexing import EventMultiplexer, EventListener
 
 
 class _EventEaten(BaseException):
@@ -40,20 +40,28 @@ class ComparableCallable:
    
    def __call__(self, *args, **kwargs):
       return self.wrappee(*args, **kwargs)
+
+   def __cmp__(self, other):
+      if (self.priority > other.priority): return 1
+      if (self.priority < other.priority): return -1
+      if (id(self) > id(other)): return 1
+      if (id(self) < id(other)): return -1
+      return 0
+   
+   def __eq__(self, other):
+      return (self is other)
+   
+   def __ne__(self, other):
+      return not (self is other)
    
    def __lt__(self, other):
-      return (self.priority < other.priority)
-   def __le__(self, other):
-      return (self.priority <= other.priority)
-   def __eq__(self, other):
-      return (self.priority == other.priority)
-   def __ne__(self, other):
-      return (self.priority != other.priority)
+      return (self.__cmp__(other) < 0)
    def __gt__(self, other):
-      return (self.priority > other.priority)
+      return (self.__cmp__(other) > 0)
+   def __le__(self, other):
+      return (self.__cmp__(other) <= 0)
    def __ge__(self, other):
-      return (self.priority >= other.priority)
-   
+      return (self.__cmp__(other) >= 0)
 
 # decorator
 def ccd(priority):
@@ -68,6 +76,9 @@ class OrderingEventMultiplexer(EventMultiplexer):
    log = logger.log
    def _listeners_order(self):
       self.listeners.sort(key=lambda l: l.callback)
+   
+   def new_prio_listener(self, handler, priority=0):
+      return EventListener(self, ccd(priority)(handler))
    
    def _listener_subscribe(self, listener, *args, **kwargs):
       assert((_dummy_ccd <= listener.callback) or (_dummy_ccd > listener.callback))
