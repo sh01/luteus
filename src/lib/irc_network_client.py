@@ -75,8 +75,10 @@ class IRCUserSpec:
       
       return rv
 
+
 class StateError(Exception):
    pass
+
 
 class IRCClientNetworkLink:
    logger = logging.getLogger('IRCClientNetworkLink')
@@ -204,7 +206,6 @@ def _selftest(targethost, username='chimera', realname=b'? ? ?'):
    
    streamlogger_setup()
    ed = ED_get()()
-   
    
    irccnl = IRCClientNetworkLink(ed, us, servers, conn_delay_is=5)
    irccnl.conn_init()
