@@ -115,7 +115,6 @@ class IRCClientNetworkLink:
          conn.close()
       self.log(20, 'Connection {0!a} finished link.'.format(conn))
       
-   
    def shedule_conn_init(self):
       if not (self.timer_connect is None):
          return
