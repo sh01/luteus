@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with luteus.  If not, see <http://www.gnu.org/licenses/>.
 
+import logging
 
 class IRCProtocolError(ValueError):
    def __init__(self, msg, *args, **kwargs):
@@ -80,6 +81,9 @@ class IRCNick(bytes):
 
 class IRCMessage:
    """An IRC message, as defined by RFC 2812"""
+   logger = logging.getLogger()
+   log = logger.log
+   
    def __init__(self, prefix:bytes, command:bytes, parameters:bytes):
       self.prefix = prefix
       self.command = command
@@ -95,12 +99,17 @@ class IRCMessage:
          parameters = line_split[2:]
       else:
          prefix = None
-         command = line_split[0]
+         command = bytes(line_split[0])
          parameters = line_split[1:]
       
       i = 0
       while (i < len(parameters)):
          p = parameters[i]
+         if (p == b''):
+            del(parameters[i])
+            cls.log(20, 'Invalid empty param in line {0!a}; discarding.'.format(line))
+            continue
+         
          if not (p.startswith(b':')):
             i += 1
             continue
@@ -142,7 +151,7 @@ class IRCMessage:
    
    def __repr__(self):
       return '{0}.build_from_line({1!a})'.format(
-         self.__class__.__name__, self.line_build(sanity_check=False)[:-1])
+         self.__class__.__name__, self.line_build(sanity_check=False)[:-2])
 
 
 class IRCChannel:
