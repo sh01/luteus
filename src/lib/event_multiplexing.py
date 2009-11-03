@@ -62,6 +62,9 @@ class ComparableCallable:
       return (self.__cmp__(other) <= 0)
    def __ge__(self, other):
       return (self.__cmp__(other) >= 0)
+   
+   def __str__(self):
+      return '{0.__class__.__name__}{1}'.format(self, (self.wrappee, self.priority))
 
 # decorator
 def ccd(priority):
@@ -95,8 +98,9 @@ class OrderingEventMultiplexer(EventMultiplexer):
          except EAT_ALL:
             return True
          except BaseException as exc:
-            self.log(40, '{0} caught exception in handler called with params'
-               '(*{1}, **{2}):'.format(self, args, kwargs), exc_info=True)
+            self.log(40, '{0} caught exception in handler call '
+               '{1}(*{2}, **{3}):'.format(self, listener.callback, args,
+               kwargs), exc_info=True)
          
       return False
 
