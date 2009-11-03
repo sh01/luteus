@@ -105,6 +105,8 @@ class IRCClientNetworkLink:
       self.em_names = self.ircc_cls.EM_NAMES
       for em_name in self.em_names:
          self.em_new(em_name)
+      
+      self.em_shutdown.new_prio_listener(self._process_conn_shutdown)
    
    def is_linked(self):
       """Return whether we are linked to the network."""
@@ -132,13 +134,20 @@ class IRCClientNetworkLink:
          return server
       return rv
    
-   def link_finish_process(self, conn):
+   def _process_link_finish(self, conn):
       """Process link finish on specified connection."""
       if (conn != self.conn):
          self.log(40, 'Unexpected link finish on unknown connection {0!a}.'.format(conn))
          conn.close()
       self.log(20, 'Connection {0!a} finished link.'.format(conn))
-      
+
+   def _process_conn_shutdown(self):
+      was_linked = self.conn.link_done
+      self.void_active_conn()
+      self.shedule_conn_init()
+      if (was_linked):
+         self.server_picker = self.make_server_picker()
+   
    def shedule_conn_init(self):
       if not (self.timer_connect is None):
          return
@@ -187,7 +196,7 @@ class IRCClientNetworkLink:
          lwl1.close()
          lwl2.close()
          tt.cancel()
-         self.link_finish_process(conn)
+         self._process_link_finish(conn)
          
       lwl1 = conn.em_in_msg.new_prio_listener(link_watch, 512)
       lwl2 = conn.em_link_finish.new_prio_listener(link_watch_finish, 512)
@@ -199,8 +208,6 @@ class IRCClientNetworkLink:
             return
          conn.close()
          self.log(30, 'Connection {0!a} timeouted during link.'.format(conn))
-         self.void_active_conn()
-         self.conn_init()
       
       tt = self.ed.set_timer(self.link_timeout, timeout, parent=self)
       
