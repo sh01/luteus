@@ -497,7 +497,7 @@ class IRCClientConnection(AsyncLineStream):
       try:
          cmd_str = msg.command.decode('ascii')
       except UnicodeDecodeError:
-         self.log(30, 'Peer {0} sent unknown message {1}.'.format(self.peer_address, msg))
+         self.log(30, 'Peer {0} sent undecodable message {1}.'.format(self.peer_address, msg))
       else:
          fn = '_process_msg_{0}'.format(cmd_str)
          try:
@@ -768,29 +768,31 @@ class IRCClientConnection(AsyncLineStream):
          self.link_done = True
          self.em_link_finish()
    
-   # replies to JOIN request
+   # Channel-JOIN data dump messages
+   def _get_own_chan(self, msg, chnn):
+      try:
+         rv = self.channels[bytes(chnn)]
+      except KeyError as exc:
+         raise IRCProtocolError(msg, "Not on chan {0!a}.".format(chnn)) from exc
+      
+      return rv
+   
    def _process_msg_331(self, msg):
       """Process RPL_NOTOPIC message"""
       self._pc_check(msg, 2)
-      chan = bytes(msg.parameters[1])
-      if not (chan in self.channels):
-         raise IRCProtocolError(msg, "Not on chan {0!a}.".format(chan))
-      self.channels[chan].topic = False
+      chan = self._get_own_chan(msg, msg.parameters[1])
+      chan.topic = False
       
    def _process_msg_332(self, msg):
       """Process RPL_TOPIC message"""
       self._pc_check(msg, 3)
-      chan = bytes(msg.parameters[1])
-      if not (chan in self.channels):
-         raise IRCProtocolError(msg, "Not on chan {0!a}.".format(chan))
-      self.channels[chan].topic = msg.parameters[2]
+      chan = self._get_own_chan(msg, msg.parameters[1])
+      chan.topic = msg.parameters[2]
    
    def _process_msg_353(self, msg):
       """Process RPL_NAMREPLY message."""
       self._pc_check(msg, 4)
-      chan = self.channels[bytes(msg.parameters[2])]
-      if not (chan in self.channels):
-         raise IRCProtocolError(msg, "Not on chan {0!a}.".format(chan))
+      chan = self._get_own_chan(msg, msg.parameters[2])
       chan.users = {}
       for nick_str in msg.parameters[3].split(b' '):
          i = 0
