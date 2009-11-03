@@ -106,6 +106,18 @@ class IRCClientNetworkLink:
       for em_name in self.em_names:
          self.em_new(em_name)
    
+   def is_linked(self):
+      """Return whether we are linked to the network."""
+      if not (self.conn):
+         return False
+      return self.conn.link_done
+   
+   def get_self_nick(self):
+      """Get currently used nick."""
+      if not (self.conn):
+         return None
+      return self.conn.nick
+   
    def em_new(self, attr):
       """Instantiate new EventMultiplexer attribute"""
       setattr(self, attr, OrderingEventMultiplexer(self))
