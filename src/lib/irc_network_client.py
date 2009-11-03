@@ -177,8 +177,8 @@ class IRCClientNetworkLink:
          tt.cancel()
          self.link_finish_process(conn)
          
-      lwl1 = conn.em_in_msg.new_prio_listener(link_watch)
-      lwl2 = conn.em_link_finish.new_prio_listener(link_watch_finish)
+      lwl1 = conn.em_in_msg.new_prio_listener(link_watch, 512)
+      lwl2 = conn.em_link_finish.new_prio_listener(link_watch_finish, 512)
       
       def timeout():
          if not (self.conn is conn):
@@ -196,7 +196,7 @@ class IRCClientNetworkLink:
       for emn in self.em_names:
          sub_em = getattr(conn, emn)
          sup_em = getattr(self, emn)
-         listener = sub_em.new_prio_listener(sup_em)
+         listener = sub_em.new_prio_listener(sup_em, 1024)
          self.conn_els.append(listener)
    
    def void_active_conn(self):

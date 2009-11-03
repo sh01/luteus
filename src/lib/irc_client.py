@@ -357,9 +357,9 @@ class IRCClientConnection(AsyncLineStream):
    timeout = 64
    maintenance_delay = 32
    
-   EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_in_msg_bc', 'em_in_msg_ap',
-      'em_out_msg', 'em_link_finish', 'em_shutdown', 'em_chmode',
-      'em_chan_join', 'em_chan_leave')
+   EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_in_msg_bc', 'em_out_msg',
+      'em_link_finish', 'em_shutdown', 'em_chmode', 'em_chan_join',
+      'em_chan_leave')
    #calling conventions:
    # Raw lines. Modify to modify what the parser sees.
    # Retval is ignored.
@@ -411,6 +411,9 @@ class IRCClientConnection(AsyncLineStream):
       
       for name in self.EM_NAMES:
          self.em_new(name)
+      
+      self.em_in_msg.new_prio_listener(self.process_input_statekeeping)
+      self.em_in_msg.new_prio_listener(self.process_input_query_fetch, -1024)
       
       self.timer_maintenance = ed.set_timer(self.maintenance_delay,
          self._perform_maintenance, parent=self, persist=True)
@@ -473,20 +476,24 @@ class IRCClientConnection(AsyncLineStream):
          return
       msg = IRCMessage.build_from_line(line_data)
       
-      if (self.pending_query):
-         is_query_related = self.pending_query.process_data(msg)
-         if (is_query_related == 2):
-            self.pending_query = None
-            self._check_queries()
-      else:
-         is_query_related = False
-      
       if (self.em_in_msg(msg)):
          return
       
-      if not (is_query_related):
+      if not (msg.is_query_related):
          self.em_in_msg_bc(msg)
-      
+   
+   def process_input_query_fetch(self, msg):
+      """Do query input processing."""
+      if (self.pending_query):
+         msg.is_query_related = self.pending_query.process_data(msg)
+         if (msg.is_query_related == 2):
+            self.pending_query = None
+            self._check_queries()
+      else:
+         msg.is_query_related = False
+   
+   def process_input_statekeeping(self, msg):
+      """Do local input processing."""
       try:
          cmd_str = msg.command.decode('ascii')
       except UnicodeDecodeError:
@@ -517,8 +524,6 @@ class IRCClientConnection(AsyncLineStream):
             except IRCProtocolError as exc:
                self.log(30, 'From {0}: msg {1} failed to process: {2}'.format(
                   self.peer_address, msg, exc), exc_info=True)
-      
-      self.em_in_msg_ap(msg)
    
    def _send_msg(self, command, *parameters):
       """Send MSG to peer immediately."""
