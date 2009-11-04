@@ -147,7 +147,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
          return
       if (line_data == b''):
          return
-      msg = IRCMessage.build_from_line(line_data)
+      msg = IRCMessage.build_from_line(line_data, src=self)
       if (self.em_in_msg(msg)):
          return
       

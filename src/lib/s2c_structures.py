@@ -84,13 +84,15 @@ class IRCMessage:
    logger = logging.getLogger()
    log = logger.log
    
-   def __init__(self, prefix:bytes, command:bytes, parameters:bytes):
+   def __init__(self, prefix:bytes, command:bytes, parameters:bytes, src=None):
       self.prefix = prefix
       self.command = command
       self.parameters = parameters
+      
+      self.src = src
    
    @classmethod
-   def build_from_line(cls, line):
+   def build_from_line(cls, line, src=None):
       """Build instance from raw line"""
       line_split = line.split(b' ') # RFC 2812 says this is correct.
       if (line.startswith(b':')):
@@ -116,7 +118,7 @@ class IRCMessage:
          parameters[i] = b' '.join([parameters[i][1:]] + parameters[i+1:])
          del(parameters[i+1:])
          break
-      return cls(prefix, command, tuple(parameters))
+      return cls(prefix, command, tuple(parameters), src=src)
    
    def line_build(self, sanity_check=True):
       if (self.prefix is None):

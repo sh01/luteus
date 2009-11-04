@@ -185,7 +185,7 @@ class _BlockQuery:
       return cls.BQTypes[msg.command.upper()](msg, *args, **kwargs)
    
    def put_req(self, conn):
-      conn._send_msg(self.msg.command, *self.msg.parameters)
+      conn.send_msg(self.msg)
    
    def get_msg_barriers(self, msg):
       raise NotImplementedError('Not done here; use a subclass instead.')
@@ -247,7 +247,7 @@ class BlockQueryGeneric(_BlockQuery):
       self.active = False
    
    def put_req(self, conn):
-      conn._send_msg(self.msg.command, *self.msg.parameters)
+      conn.send_msg(self.msg)
       conn._send_msg(b'PING', self.stop_tok)
       self.active = True
    
@@ -462,7 +462,7 @@ class IRCClientConnection(AsyncLineStream):
             self._check_queries()
             return query
       
-      self._send_msg(msg.command, *msg.parameters)
+      self.send_msg(msg)
       
    def process_input(self, line_data_mv):
       """Process IRC data"""
@@ -474,7 +474,7 @@ class IRCClientConnection(AsyncLineStream):
          return
       if (line_data == b''):
          return
-      msg = IRCMessage.build_from_line(line_data)
+      msg = IRCMessage.build_from_line(line_data, src=self)
       
       if (self.em_in_msg(msg)):
          return
@@ -525,12 +525,16 @@ class IRCClientConnection(AsyncLineStream):
                self.log(30, 'From {0}: msg {1} failed to process: {2}'.format(
                   self.peer_address, msg, exc), exc_info=True)
    
-   def _send_msg(self, command, *parameters):
-      """Send MSG to peer immediately."""
-      msg = IRCMessage(None, command, parameters)
+   def send_msg(self, msg):
+      """Send MSG to peer immediately"""
       self.em_out_msg(msg)
       line_out = msg.line_build()
       self.send_bytes((line_out,))
+   
+   def _send_msg(self, command, *parameters):
+      """Build MSG and send to peer immediately."""
+      msg = IRCMessage(None, command, parameters, src=self)
+      self.send_msg(msg)
    
    @classmethod
    def irc_build_sock_connect(cls, ed, address, *args, **kwargs):
