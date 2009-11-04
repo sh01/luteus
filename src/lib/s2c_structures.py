@@ -91,6 +91,9 @@ class IRCMessage:
       
       self.src = src
    
+   def copy(self):
+      return self.__class__(self.prefix, self.command, self.parameters, self.src)
+      
    @classmethod
    def build_from_line(cls, line, src=None):
       """Build instance from raw line"""

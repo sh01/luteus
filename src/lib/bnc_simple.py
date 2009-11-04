@@ -24,6 +24,10 @@ class SimpleBNC:
    logger = logging.getLogger('SimpleBNC')
    log = logger.log
    
+   # *Outgoing* commands to mirror to other client connections
+   mirror_cmds = set((b'PRIVMSG', b'NOTICE'))
+   mirror_postfix = b'!user@cruentus.bnc'
+   
    def __init__(self, network_conn):
       self.nc = network_conn
       self.nick = network_conn.get_self_nick()
@@ -31,6 +35,8 @@ class SimpleBNC:
       network_conn.em_in_msg.new_prio_listener(self._process_network_msg)
       network_conn.em_link_finish.new_prio_listener(self._process_network_link)
       network_conn.em_in_msg_bc.new_prio_listener(self._process_network_bc_msg)
+      network_conn.em_out_msg.new_prio_listener(self._process_network_out_msg)
+      
       self.ips_conns = set()
       self.motd = None
    
@@ -63,6 +69,17 @@ class SimpleBNC:
    def _process_network_bc_msg(self, msg):
       for ipsc in self.ips_conns:
          ipsc.send_msg(msg)
+   
+   def _process_network_out_msg(self, msg):
+      if not (msg.command in self.mirror_cmds):
+         return
+      msg2 = msg.copy()
+      msg2.prefix = (self.nick + self.mirror_postfix)
+      
+      for ipsc in self.ips_conns:
+         if (msg2.src is ipsc):
+            continue
+         ipsc.send_msg(msg2)
    
    def _process_network_msg(self, msg):
       if (msg.command in (b'NICK',)):
