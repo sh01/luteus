@@ -184,17 +184,16 @@ class IRCPseudoServerConnection(AsyncLineStream):
       msg = IRCMessage(self.self_name, cmd, (self.nick,) + args)
       self.send_msg(msg)
    
-   def send_msg_001(self, netname='Cruentus IRC bouncer', ia_user=None):
+   def send_msg_001(self, netname=b'Cruentus IRC bouncer', ia_user=None):
       if (ia_user is None):
          if (self.nick is None):
             raise ValueError('No nick for peer known.')
          
-         ia_user = '{0}!{1}@{2}'.format(self.nick, self.user, self.peer_address)
+         ia_user = self.nick + b'!' + self.user + b'@' + self.peer_address.encode('ascii')
       
-      self.send_msg_num(1, 'Welcome to {0}, {1}'.format(netname, ia_user)
-         .encode('ascii'))
+      self.send_msg_num(1, b'Welcome to ' + netname + b', ' + ia_user)
    
-   def send_msg_002(self, host=None, version=b'foo'):
+   def send_msg_002(self, host=None, version='foo'):
       if (host is None):
          host = self.fl.getsockname()[0]
       
