@@ -189,9 +189,10 @@ class IRCPseudoServerConnection(AsyncLineStream):
          if (self.nick is None):
             raise ValueError('No nick for peer known.')
          
-         ia_user = self.nick + b'!' + self.user + b'@' + self.peer_address.encode('ascii')
+         ia_user = b''.join((self.nick, b'!', self.user, b'@',
+            self.peer_address.encode('ascii')))
       
-      self.send_msg_num(1, b'Welcome to ' + netname + b', ' + ia_user)
+      self.send_msg_num(1, b''.join((b'Welcome to ', netname, b', ', ia_user)))
    
    def send_msg_002(self, host=None, version='foo'):
       if (host is None):
