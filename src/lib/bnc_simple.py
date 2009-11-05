@@ -20,6 +20,7 @@ import logging
 from .s2c_structures import *
 from .irc_num_constants import *
 
+
 class SimpleBNC:
    logger = logging.getLogger('SimpleBNC')
    log = logger.log
@@ -31,11 +32,13 @@ class SimpleBNC:
    def __init__(self, network_conn):
       self.nc = network_conn
       self.nick = network_conn.get_self_nick()
+      self.isupport_data = network_conn.get_isupport_data()
       
       network_conn.em_in_msg.new_prio_listener(self._process_network_msg)
       network_conn.em_link_finish.new_prio_listener(self._process_network_link)
       network_conn.em_in_msg_bc.new_prio_listener(self._process_network_bc_msg)
       network_conn.em_out_msg.new_prio_listener(self._process_network_out_msg)
+      network_conn.em_shutdown.new_prio_listener(self._process_network_conn_shutdown)
       
       self.ips_conns = set()
       self.motd = None
@@ -62,9 +65,17 @@ class SimpleBNC:
       self.nick = newnick
       for ipsc in self.ips_conns:
          ipsc.change_nick(self.nick)
-
+   
+   def _process_network_conn_shutdown(self):
+      idn = self.nc.get_isupport_data()
+      self.isupport_data = (idn or self.isupport_data)
+   
    def _process_network_link(self):
       self._process_potential_nickchange()
+      self.isupport_data = self.nc.get_isupport_data()
+   
+   def _get_isupport_data(self):
+      return (self.nc.get_isupport_data() or self.isupport_data)
    
    def _process_network_bc_msg(self, msg):
       for ipsc in self.ips_conns:
@@ -117,6 +128,7 @@ class SimpleBNC:
       conn.send_msg_001()
       conn.send_msg_002()
       conn.send_msg_003()
+      conn.send_msgs_005(self.isupport_data)
       
       if not (self.nick is None):
          conn.change_nick(self.nick)

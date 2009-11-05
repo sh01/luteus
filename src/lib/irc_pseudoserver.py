@@ -210,6 +210,11 @@ class IRCPseudoServerConnection(AsyncLineStream):
       self.send_msg_num(3, 'This server was created {0}'.format(tstr)
          .encode('ascii'))
    
+   def send_msgs_005(self, isupport_data):
+      msgs = isupport_data.get_005_lines(self.nick, self.self_name)
+      for msg in msgs:
+         self.send_msg(msg)
+   
    def change_nick(self, newnick):
       """Force nickchange."""
       if (self.nick == newnick):

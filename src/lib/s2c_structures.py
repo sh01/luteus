@@ -84,6 +84,8 @@ class IRCMessage:
    logger = logging.getLogger()
    log = logger.log
    
+   LEN_LIMIT = 512
+   
    def __init__(self, prefix:bytes, command:bytes, parameters:bytes, src=None):
       self.prefix = prefix
       self.command = command
@@ -152,6 +154,22 @@ class IRCMessage:
          rv = int(self.command)
       except ValueError:
          return None
+      return rv
+   
+   def get_line_length(self):
+      if (self.prefix is None):
+         rv = 0
+      else:
+         rv = len(self.prefix) + 2
+      
+      rv += len(self.command)
+      rv += sum([len(p)+1 for p in self.parameters]) # +1 for preceding spaces
+      
+      if ((self.parameters) and (b' ' in self.parameters[-1])):
+         # ':' prefix for last parameter
+         rv += 1
+      rv += 2 # CRLF
+      
       return rv
    
    def __repr__(self):

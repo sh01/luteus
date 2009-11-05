@@ -21,7 +21,7 @@ from collections import deque
 
 from .event_multiplexing import OrderingEventMultiplexer
 from .s2c_structures import IRCMessage
-from .irc_client import IRCClientConnection
+from .irc_client import IRCClientConnection, IRCISUPPORTData
 from .irc_num_constants import *
 
 
@@ -119,6 +119,12 @@ class IRCClientNetworkLink:
       if not (self.conn):
          return None
       return self.conn.nick
+   
+   def get_isupport_data(self):
+      """Get current ISUPPORT data."""
+      if not (self.conn):
+         return IRCISUPPORTData()
+      return self.conn.isupport_data
    
    def em_new(self, attr):
       """Instantiate new EventMultiplexer attribute"""

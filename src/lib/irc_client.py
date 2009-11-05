@@ -63,7 +63,7 @@ class ChannelModeParser:
    def process_ISUPPORT_PREFIX(self, prefix):
       """Process PREFIX arg value from RPL_ISUPPORT(005) message"""
       if (not prefix.startswith(b'(')):
-         raise ValueError('Invalid PREFIX val {0}'.format(prefix))
+         raise IRCProtocolError('Invalid PREFIX val {0}'.format(prefix))
       i = prefix.index(b')')
       
       modes = prefix[1:i]
@@ -348,6 +348,74 @@ class BlockQueryLIST(_BlockQuery):
          (num == RPL_LISTEND))
 
 
+class IRCISUPPORTData(dict):
+   def __init__(self, *args, **kwargs):
+      dict.__init__(self, *args, **kwargs)
+      self.em_argchange = OrderingEventMultiplexer(self)
+   
+   def parse_msg(self, msg):
+      args = list(msg.parameters[1:])
+      
+      if (args and (b' ' in args[-1])):
+         # Probably a silly HR explanation of this line, as specified by
+         # draft-brocklesby-irc-isupport-03.
+         del(args[-1])
+      
+      for arg in args:
+         if (b'=' in arg):
+            (name, val) = arg.split(b'=', 1)
+            val = bytes(val)
+         elif arg.startswith(b'-'):
+            name = arg[1:]
+            val = False
+         else:
+            name = arg
+            val = True
+         
+         name = bytes(name)
+         if ((not (name in self)) or (self[name] != val)):
+            self.em_argchange(name, val)
+         
+         self[name] = val
+   
+   def get_argstring(self, name):
+      val = self[name]
+      if (val is True):
+         return name
+      if (val is False):
+         return (b'-' + name)
+      return b''.join((name, b'=', val))
+   
+   def get_005_lines(self, nick, prefix=None):
+      rv = []
+      arguments = None
+      msg = None
+      
+      def bump_msg():
+         nonlocal arguments, msg
+         arguments = [nick, b'are supported by this server']
+         msg = IRCMessage(prefix, b'005', arguments)
+      
+      bump_msg()
+      ml_base = msg.get_line_length()
+      
+      for name in self:
+         ml = msg.get_line_length()
+         tok = self.get_argstring(name)
+         
+         if ((ml > ml_base) and ((len(arguments) >= 15) or
+             (ml + len(tok) + 1 > msg.LEN_LIMIT))):
+            rv.append(msg)
+            bump_msg()
+         
+         arguments.insert(-1, tok)
+      
+      if (len(arguments) > 2):
+         rv.append(msg)
+      
+      return rv
+
+
 class IRCClientConnection(AsyncLineStream):
    logger = logging.getLogger('IRCClientConnection')
    log = logger.log
@@ -393,6 +461,8 @@ class IRCClientConnection(AsyncLineStream):
       self.username = username
       self.mode = mode
       self.modes = set()
+      self.isupport_data = IRCISUPPORTData()
+      self.isupport_data.em_argchange.new_prio_listener(self._process_005_update)
       
       if (chm_parser is None):
          chm_parser = ChannelModeParser()
@@ -715,40 +785,22 @@ class IRCClientConnection(AsyncLineStream):
       if ((self.peer is None) and (msg.parameters)):
          self.peer = msg.parameters[0]
    
+   def _process_005_update(self, name, val):
+      nu = name.upper()
+      if (nu == b'PREFIX'):
+         self.chm_parser.process_ISUPPORT_PREFIX(val)
+         self.log(20, '{0} parsed prefix data from 005.'.format(self))
+         return
+      
+      if (nu == b'CHANMODES'):
+         self.chm_parser.process_ISUPPORT_CHANMODES(val)
+         self.log(20, '{0} parsed chanmodes data from 005.'.format(self))
+
+      
    def _process_msg_005(self, msg):
       """Process RPL_ISUPPORT message"""
-      if (msg.parameters[0] == self.nick):
-         args = list(msg.parameters[1:])
-      else:
-         args = list(msg.parameters)
-
-      # draft-brocklesby-irc-isupport mandates the last argument to be used for
-      # a silly human-readable explanation; and indeed this is done by at least
-      # some existing implementations. Discard it, if present.
-      if (b' ' in args[-1]):
-         del(args[-1])
-      
-      for is_arg in args:
-         if (b'=' in is_arg):
-            (name,val) = is_arg.split(b'=',1)
-            if (val == b''):
-               val = True
-         elif (is_arg.startswith(b'-')):
-            name = is_arg[1:]
-            val = False
-         else:
-            name = is_arg
-            val = True
-     
-         if (name.upper() in (b'PREFIX', b'CHANMODES')):
-            if (val is True):
-               val = ''
-            if (name.upper() == b'PREFIX'):
-               self.chm_parser.process_ISUPPORT_PREFIX(val)
-               self.log(20, '{0} parsed prefix data from 005.'.format(self))
-            else:
-               self.chm_parser.process_ISUPPORT_CHANMODES(val)
-               self.log(20, '{0} parsed chanmodes data from 005.'.format(self))
+      args = list(msg.parameters[1:])
+      self.isupport_data.parse_msg(msg)
    
    # MOTD
    def _process_msg_375(self, msg):
