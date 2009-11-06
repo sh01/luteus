@@ -22,6 +22,9 @@ class IRCProtocolError(ValueError):
       self.msg = msg
       ValueError.__init__(self, *args, **kwargs)
 
+class IRCInsufficientParametersError(IRCProtocolError):
+   pass
+
 # IRC Address Types
 IA_SERVER = 0
 IA_NICK = 1
@@ -34,14 +37,14 @@ class IRCAddress(bytes):
             self.type = IA_SERVER
          else:
             self.type = IA_NICK
-            self.nick = IRCNick(self)
+            self.nick = IRCCIString(self)
             self.hostmask = None
             self.user = None
          return
       
       self.type = IA_NICK
       (nick, rest) = self.split(b'!',1)
-      self.nick = IRCNick(nick)
+      self.nick = IRCCIString(nick)
       (user, hostmask) = rest.split(b'@',1)
       self.hostmask = hostmask
    
@@ -60,7 +63,8 @@ class IRCAddress(bytes):
       return (self.nick == other.nick)
 
 
-class IRCNick(bytes):
+class IRCCIString(bytes):
+   """Case-insensitive (as defined by RFC2821) string"""
    LOWERMAP = bytearray(range(256))
    for i in range(ord(b'A'), ord(b'Z')+1):
       LOWERMAP[i] = ord(chr(i).lower())
@@ -171,6 +175,50 @@ class IRCMessage:
       rv += 2 # CRLF
       
       return rv
+   
+   def parse_JOIN(self):
+      if not (self.parameters):
+         raise IRCProtocolError(self)
+      if ((len(self.parameters) == 1) and (self.parameters[0] == b'0')):
+         return 0
+      
+      rv = {}
+      chnns = bytes(self.parameters[0]).split(b',')
+      if (len(self.parameters) > 1):
+         keys = bytes(self.parameters[1]).split(b',')
+      else:
+         keys = ()
+      
+      for i in range(len(chnns)):
+         chnn = IRCCIString(chnns[i])
+         if (i < len(keys)):
+            key = keys[i]
+         else:
+            key = None
+         rv[chnn] = key
+      
+      return rv
+   
+   def parse_KICK(self):
+      if (len(self.parameters) < 2):
+         raise IRCProtocolError(self)
+      
+      chnns = [IRCCIString(b) for b in bytes(self.parameters[0]).split(b',')]
+      nicks = [IRCCIString(b) for b in bytes(self.parameters[1]).split(b',')]
+      if (len(chnns) == 0):
+         raise IRCProtocolError(self)
+      
+      if (len(nicks) == 1):
+         nicks *= len(chnns)
+      elif (len(nicks) != len(chnns)):
+         raise IRCProtocolError(self)
+      
+      return zip(chnns,nicks)
+   
+   def parse_PART(self):
+      if (len(self.parameters) < 1):
+         raise IRCProtocolError(self)
+      return [IRCCIString(b) for b in bytes(self.parameters[0]).split(b',')]
    
    def __repr__(self):
       return '{0}.build_from_line({1!a})'.format(

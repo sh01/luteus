@@ -128,7 +128,7 @@ class ChannelModeParser:
                   chan.modes[m].remove(modeargs[arg_i])
             elif (m in self.umodes2umodes):
                umode = self.umodes2umodes[m]
-               nick = IRCNick(modeargs[arg_i])
+               nick = IRCCIString(modeargs[arg_i])
                if (set):
                   if (umode in chan.users[nick]):
                      raise IRCProtocolError("Attempting to set present umode")
@@ -444,7 +444,7 @@ class IRCClientConnection(AsyncLineStream):
    # em_link_finish()
    # em_chan_join(nick, chan)
    #   <nick> is None for self-joins
-   # em_chan_leave(victim, chan, perpetrator)
+   # em_chan_leave(msg, victim, chan, perpetrator)
    #   <victim> is None for self-leaves
    #   <perpetrator> is None for PARTs and self-kicks
    def __init__(self, ed, *args, nick, username, realname, mode=0, chm_parser=None,
@@ -545,6 +545,7 @@ class IRCClientConnection(AsyncLineStream):
       if (line_data == b''):
          return
       msg = IRCMessage.build_from_line(line_data, src=self)
+      msg.responded = False
       
       if (self.em_in_msg(msg)):
          return
@@ -656,12 +657,10 @@ class IRCClientConnection(AsyncLineStream):
    
    def _process_msg_JOIN(self, msg):
       """Process JOIN message."""
-      self._pc_check(msg, 1)
       if ((msg.prefix is None) or (msg.prefix.type != IA_NICK)):
          raise IRCProtocolError('Non-nick trying to join channel.')
       
-      # RFC 2812 allows servers to use join-lists in JOIN messages to clients.
-      chnns = bytes(msg.parameters[0]).split(b',')
+      chnns = msg.parse_JOIN()
       for chnn in chnns:
          if (msg.prefix.nick == self.nick):
             # Our join.
@@ -684,8 +683,7 @@ class IRCClientConnection(AsyncLineStream):
    
    def _process_msg_PART(self, msg):
       """Process PART message."""
-      self._pc_check(msg, 1)
-      chans = bytes(msg.parameters[0]).split(b',')
+      chnns = msg.parse_PART()
       
       if ((msg.prefix is None) or (msg.prefix.type != IA_NICK)):
          raise IRCPRotocolError('Bogus PART prefix.')
@@ -696,14 +694,19 @@ class IRCClientConnection(AsyncLineStream):
       else:
          reason = None
       
-      for chnn in chans:
+      for chnn in chnns:
+         chnn = IRCCIString(chnn)
          if (not chnn in self.channels):
             raise IRCProtocolError("PART message for channel we aren't on.")
          chan = self.channels[chnn]
          if (not nick in chan.users):
             raise IRCProtocolError("PARTed user not on channel.")
          
-         self.em_chan_leave(nick, chan, None)
+         nick_em = nick
+         if (nick == self.nick):
+            nick_em = None
+         
+         self.em_chan_leave(msg, nick_em, chan, None)
          if (nick == self.nick):
             del(self.channels[chnn])
             break
@@ -711,35 +714,35 @@ class IRCClientConnection(AsyncLineStream):
    
    def _process_msg_KICK(self, msg):
       """Process KICK message."""
-      self._pc_check(msg, 2)
-      # RFC 2812 says that multi-target lists can't occur in this direction;
-      # no matter, it's safer to support them anyway.
-      chans = bytes(msg.parameters[0]).split(b',')
-      nicks = bytes(msg.parameters[1]).split(b',')
+      kick_data = msg.parse_KICK()
       
-      for chnn in chans:
+      for (chnn, nick) in kick_data:
          if not (chnn in self.channels):
             raise IRCProtocolError("KICK message for channel we aren't on.")
          
          chan = self.channels[chnn]
-         for nick in nicks:
-            if (msg.prefix is None):
-               perpetrator = self.peer
-            elif ((msg.prefix.type == IA_NICK) and (nick == msg.prefix.nick)):
-               perpetrator = None
-            else:
-               perpetrator = msg.prefix
-            self.em_chan_leave(nick, chan, perpetrator)
+         if (msg.prefix is None):
+            perpetrator = self.peer
+         elif ((msg.prefix.type == IA_NICK) and (nick == msg.prefix.nick)):
+            perpetrator = None
+         else:
+            perpetrator = msg.prefix
             
-            if (nick != self.nick):
-               try:
-                  del(chan.users[nick])
-               except KeyError as exc:
-                  raise IRCProtocolError('KICKed nick {0!a} not on chan.'.format(nick)) from exc
+         nick_em = nick
+         if (nick == self.nick):
+            nick_em = None
             
-            # Our part.
-            del(self.channels[chnn])
-            break
+         self.em_chan_leave(msg, nick_em, chan, perpetrator)
+         if (nick != self.nick):
+            try:
+               del(chan.users[nick])
+            except KeyError as exc:
+               raise IRCProtocolError('KICKed nick {0!a} not on chan.'.format(nick)) from exc
+            return
+            
+         # Our part.
+         del(self.channels[chnn])
+         break
    
    def _process_msg_MODE(self, msg):
       """Process MODE message."""
@@ -826,6 +829,7 @@ class IRCClientConnection(AsyncLineStream):
    
    # Channel-JOIN data dump messages
    def _get_own_chan(self, msg, chnn):
+      chnn = IRCCIString(chnn)
       try:
          rv = self.channels[bytes(chnn)]
       except KeyError as exc:
@@ -856,7 +860,7 @@ class IRCClientConnection(AsyncLineStream):
             if (c in self.IRCNICK_INITCHARS):
                break
             i += 1
-         nick = IRCNick(nick_str[i:])
+         nick = IRCCIString(nick_str[i:])
          
          chan.users[nick] = set()
          for b in b2b(nick_str[:i]):

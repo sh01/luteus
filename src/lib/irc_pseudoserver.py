@@ -23,6 +23,9 @@ from gonium.fdm.stream import AsyncLineStream, AsyncSockServer
 from .event_multiplexing import OrderingEventMultiplexer, EAT_ALL
 from .s2c_structures import *
 
+class IRCPSStateError(Exception):
+   pass
+
 
 class DefaultAssocHandler:
    logger = logging.getLogger()
@@ -84,10 +87,6 @@ class IRCPseudoServer(AsyncSockServer):
       for el in self.els:
          el.close()
       del(self.els[:])
-   
-   
-class IRCPSStateError(Exception):
-   pass
 
 
 class IRCPseudoServerConnection(AsyncLineStream):
@@ -103,6 +102,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
       self.user = None
       self.mode_str = None
       self.realname = None
+      self.wanted_channels = set()
       
       self.channels = None
       self.self_name = b'luteus.bnc'
@@ -116,13 +116,6 @@ class IRCPseudoServerConnection(AsyncLineStream):
    def em_new(self, attr):
       """Instantiate new EventMultiplexer attribute"""
       setattr(self, attr, OrderingEventMultiplexer(self))
-
-   def _pc_check(self, msg, num:int):
-      """Throw exception if msg has less than the specified number of
-         parameters."""
-      if (len(msg.parameters) < num):
-         raise IRCProtocolError(msg, 'Insufficient arguments; expected at least'
-            ' {0}.'.format(num))
 
    def process_close(self):
       """Process connection closing."""
@@ -167,10 +160,20 @@ class IRCPseudoServerConnection(AsyncLineStream):
       
       try:
          func(msg)
+      except IRCInsufficientParametersError as exc:
+         self.send_msg_461(msg.command)
       except IRCProtocolError as exc:
          self.log(30, 'From {0}: msg {1} failed to parse: {2}'.format(
-            self.peer_address, msg, exc), exc_info=True)
-      
+            self.peer_address, msg, exc))
+   
+   def _pc_check(self, msg, num:int, send_error=False):
+      """Throw exception if msg has less than the specified number of
+         parameters."""
+      if (len(msg.parameters) >= num):
+         return
+      if (send_error):
+         raise IRCInsufficientParametersError(msg, 'Insufficient parameters.')
+      raise IRCProtocolError(msg)
    
    def send_msg(self, msg):
       """Send MSG to peer."""
@@ -215,12 +218,30 @@ class IRCPseudoServerConnection(AsyncLineStream):
       for msg in msgs:
          self.send_msg(msg)
    
+   def send_msg_461(self, cmd):
+      self.send_msg(IRCMessage(self.self_name, b'461',
+         (self.nick, cmd, b"Insufficient parameters.")))
+   
    def change_nick(self, newnick):
       """Force nickchange."""
       if (self.nick == newnick):
          return
       self.send_msg(IRCMessage(self.nick, b'NICK', (newnick,)))
       self.nick = newnick
+   
+   def wc_add(self, chann):
+      """Add channel name to wanted chan set"""
+      chann = IRCCIString(chann)
+      if (chann in self.wanted_channels):
+         return
+      self.wanted_channels.add(chann)
+      
+   def wc_remove(self, chann):
+      """Remove channel name from wanted chan set"""
+      chann = IRCCIString(chann)
+      if not (chann in self.wanted_channels):
+         return
+      self.wanted_channels.remove(chann)
    
    def _process_msg_PING(self, msg):
       """Answer PING."""
@@ -245,13 +266,33 @@ class IRCPseudoServerConnection(AsyncLineStream):
             (self.nick, b"You sent a USER line before.")))
          return
       
-      if (len(msg.parameters) < 4):
-         self.send_msg(IRCMessage(self.send_name, b'461',
-            (self.nick, b"Insufficient parameters.")))
-      
+      self._pc_check(msg, 4, send_error=True)
       self.user = msg.parameters[0]
       self.mode_str = msg.parameters[1]
       self.realname = msg.parameters[3]
+   
+   def _process_msg_JOIN(self, msg):
+      """Process JOIN."""
+      chnns = msg.parse_JOIN()
+      if (chnns == 0):
+         self.wanted_channels.clear()
+         return
+      for chnn in chnns:
+         self.wc_add(chnn)
+   
+   def _process_msg_PART(self, msg):
+      """Process PART."""
+      chnns = msg.parse_PART()
+      for chnn in chnns:
+         self.wc_remove(chnn)
+   
+   def _process_msg_KICK(self, msg):
+      """Process KICK."""
+      kick_data = msg.parse_KICK()
+      for (chan, nick) in zip(chnns, nicks):
+         if (nick != self.nick):
+            continue
+         self.wc_remove(chnn)
    
    def peer_registered(self):
       return bool(self.nick and self.user)
