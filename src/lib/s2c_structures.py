@@ -88,11 +88,13 @@ class IRCMessage:
    logger = logging.getLogger()
    log = logger.log
    
+   # RFC 1459 and 2812, section 2.3
    LEN_LIMIT = 512
+   ARGC_LIMIT = 15
    
    def __init__(self, prefix:bytes, command:bytes, parameters:bytes, src=None):
       self.prefix = prefix
-      self.command = command
+      self.command = command.upper()
       self.parameters = parameters
       
       self.src = src
@@ -128,6 +130,37 @@ class IRCMessage:
          del(parameters[i+1:])
          break
       return cls(prefix, command, tuple(parameters), src=src)
+   
+   @classmethod
+   def build_from_arglist(cls, cmd, static_args_b, static_args_e, arg_list,
+         prefix=None, len_limit=LEN_LIMIT, argc_limit=ARGC_LIMIT):
+      rv = []
+      args = None
+      msg = None
+      
+      def bump_msg():
+         nonlocal args, msg
+         args = list(static_args_b) + list(static_args_e)
+         msg = IRCMessage(prefix, cmd, args)
+      
+      bump_msg()
+      ml_base = msg.get_line_length()
+      
+      ii = -1*len(static_args_e)
+      for arg in arg_list:
+         ml = msg.get_line_length()
+         
+         if ((ml > ml_base) and (argc_limit and (len(args) >= argc_limit)) or
+            (ml + len(arg) + 1 > len_limit)):
+            rv.append(msg)
+            bump_msg()
+         
+         args.insert(ii, arg)
+      
+      if (len(args) > (len(static_args_b) + len(static_args_e))):
+         rv.append(msg)
+      
+      return rv
    
    def line_build(self, sanity_check=True):
       if (self.prefix is None):
@@ -227,7 +260,7 @@ class IRCMessage:
 
 class IRCChannel:
    def __init__(self, chan, topic=None, users=None, modes=None,
-         expect_part=False):
+         expect_part=False, cmp_=None):
       self.chan = chan
       self.topic = topic
       self.users = users
@@ -235,6 +268,39 @@ class IRCChannel:
          modes = {}
       self.modes = modes
       self.expect_part = expect_part
+      self.cmp = cmp_
+   
+   def make_names_reply(self, target, prefix=None):
+      userstrings = []
+      for (nick, modes) in self.users.items():
+         userstrings.append(self.cmp.get_uflagstring(modes) + nick)
+      
+      msgs = list(IRCMessage.build_from_arglist(b'353',
+         (target, b'=', self.chan), (b'a',), userstrings, argc_limit=None,
+         prefix=prefix))
+      
+      # Really ugly hack to get the message format right.
+      for msg in msgs:
+         p = msg.parameters
+         del(p[-1])
+         pstr = b' '.join(p[3:])
+         del(p[3:])
+         p.append(pstr)
+      
+      msgs.append(IRCMessage(prefix, b'366', (target, self.chan, b'End of NAMES list')))
+      return msgs
+   
+   def make_join_msgs(self, target, prefix=None):
+      if (self.topic is None):
+         rv = []
+      elif (self.topic is False):
+         rv = [IRCMessage(prefix, b'331', (target, self.chan, b'No topic set'))]
+      else:
+         rv = [IRCMessage(prefix, b'332', (target, self.chan, self.topic))]
+      
+      rv += self.make_names_reply(target, prefix)
+      return rv
+
    def __repr__(self):
       return '{0}({1}, {2}, {3}, {4}, {5})'.format(self.__class__.__name__,
          self.chan, self.topic, self.users, self.modes, self.expect_part)
