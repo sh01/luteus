@@ -33,15 +33,21 @@ class SimpleBNC:
       self.nc = network_conn
       self.nick = network_conn.get_self_nick()
       self.isupport_data = network_conn.get_isupport_data()
-      
-      network_conn.em_in_msg.new_prio_listener(self._process_network_msg)
-      network_conn.em_link_finish.new_prio_listener(self._process_network_link)
-      network_conn.em_in_msg_bc.new_prio_listener(self._process_network_bc_msg)
-      network_conn.em_out_msg.new_prio_listener(self._process_network_out_msg)
-      network_conn.em_shutdown.new_prio_listener(self._process_network_conn_shutdown)
-      
       self.ips_conns = set()
       self.motd = None
+      
+      for name in dir(self):
+         attr = getattr(self, name)
+         if not (hasattr(attr, 'em_name')):
+            continue
+         getattr(self.nc, attr.em_name).new_prio_listener(attr)
+   
+   def _reg_em(em_name):
+      """Function decorator to specify self.nc-em to reg on instance init"""
+      def dc(func):
+         func.em_name = em_name
+         return func
+      return dc
    
    def _process_query_response(self, conn, query):
       if not (conn):
@@ -66,10 +72,12 @@ class SimpleBNC:
       for ipsc in self.ips_conns:
          ipsc.change_nick(self.nick)
    
+   @_reg_em('em_shutdown')
    def _process_network_conn_shutdown(self):
       idn = self.nc.get_isupport_data()
       self.isupport_data = (idn or self.isupport_data)
    
+   @_reg_em('em_link_finish')
    def _process_network_link(self):
       self._process_potential_nickchange()
       self.isupport_data = self.nc.get_isupport_data()
@@ -77,10 +85,15 @@ class SimpleBNC:
    def _get_isupport_data(self):
       return (self.nc.get_isupport_data() or self.isupport_data)
    
+   @_reg_em('em_in_msg_bc')
    def _process_network_bc_msg(self, msg):
+      if (msg.command == b'PONG'):
+         return
+      
       for ipsc in self.ips_conns:
          ipsc.send_msg(msg)
    
+   @_reg_em('em_out_msg')
    def _process_network_out_msg(self, msg):
       if not (msg.command in self.mirror_cmds):
          return
@@ -92,6 +105,7 @@ class SimpleBNC:
             continue
          ipsc.send_msg(msg2)
    
+   @_reg_em('em_in_msg')
    def _process_network_msg(self, msg):
       if (msg.command in (b'NICK',)):
          self._process_potential_nickchange()
