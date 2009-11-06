@@ -21,6 +21,14 @@ from .s2c_structures import *
 from .irc_num_constants import *
 
 
+def _reg_em(em_name):
+   """Function decorator to specify self.nc-em to reg on instance init"""
+   def dc(func):
+      func.em_name = em_name
+      return func
+   return dc
+
+
 class SimpleBNC:
    logger = logging.getLogger('SimpleBNC')
    log = logger.log
@@ -41,13 +49,6 @@ class SimpleBNC:
          if not (hasattr(attr, 'em_name')):
             continue
          getattr(self.nc, attr.em_name).new_prio_listener(attr)
-   
-   def _reg_em(em_name):
-      """Function decorator to specify self.nc-em to reg on instance init"""
-      def dc(func):
-         func.em_name = em_name
-         return func
-      return dc
    
    def _process_query_response(self, conn, query):
       if not (conn):
@@ -146,7 +147,7 @@ class SimpleBNC:
       
       if not (self.nick is None):
          conn.change_nick(self.nick)
-
+   
 
 def main():
    import sys
