@@ -112,6 +112,14 @@ class SimpleBNC:
          self._process_potential_nickchange()
          return
    
+   def _fake_join(self, conn, chnn):
+      chan = self.nc.conn.channels[chnn]
+      conn.send_msg(IRCMessage(conn.nick + self.mirror_postfix, b'JOIN',
+         (chnn,)))
+      
+      for msg in chan.make_join_msgs(conn.nick, prefix=conn.self_name):
+         conn.send_msg(msg)
+   
    def _process_client_msg(self, conn, msg):
       if (msg.command in (b'PING',b'QUIT')):
          return
@@ -120,6 +128,17 @@ class SimpleBNC:
          conn.send_msg_num(RPL_TRYAGAIN, msg.command,
             b"Bouncer disconnected; please wait for reconnect.")
          return
+      
+      if (msg.command == b'JOIN'):
+         no_new = True
+         for chnn in msg.parse_JOIN():
+            if not (chnn in self.nc.conn.channels):
+               no_new = False
+               continue
+            self._fake_join(conn, chnn)
+         
+         if (no_new):
+            return
       
       def cb(*args, **kwargs):
          self._process_query_response(conn, *args, **kwargs)

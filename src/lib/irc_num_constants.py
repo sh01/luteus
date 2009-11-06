@@ -33,6 +33,12 @@ __NUM_specs = (
    (322, 'RPL_LIST'),
    (323, 'RPL_LISTEND'),
    
+   (331, 'RPL_NOTOPIC'),
+   (332, 'RPL_TOPIC'),
+   (353, 'RPL_NAMREPLY'),
+   (366, 'RPL_ENDOFNAMES'),
+   (324, 'RPL_CHANNELMODEIS'),
+   
    (364, 'RPL_LINKS'),
    (365, 'RPL_ENDOFLINKS'),
    
