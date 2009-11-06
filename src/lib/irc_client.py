@@ -60,6 +60,11 @@ class ChannelModeParser:
          self.umodes2umodes[m] = mode
          level += 1
    
+   def get_uflagstring(self, modes):
+      modes = list(modes)
+      modes.sort()
+      return b''.join([self.umodes2flags[m.char] for m in modes])
+   
    def process_ISUPPORT_PREFIX(self, prefix):
       """Process PREFIX arg value from RPL_ISUPPORT(005) message"""
       if (not prefix.startswith(b'(')):
@@ -97,6 +102,8 @@ class ChannelModeParser:
    def set_chmodes(self, log, chan, modeargs):
       if (len(modeargs) < 1):
          raise IRCProtocolError('Insufficient args for MODE')
+      
+      modeargs = [bytes(m) for m in modeargs]
       mseq = modeargs[0]
       arg_i = 1
       set = True
@@ -387,32 +394,9 @@ class IRCISUPPORTData(dict):
       return b''.join((name, b'=', val))
    
    def get_005_lines(self, nick, prefix=None):
-      rv = []
-      arguments = None
-      msg = None
-      
-      def bump_msg():
-         nonlocal arguments, msg
-         arguments = [nick, b'are supported by this server']
-         msg = IRCMessage(prefix, b'005', arguments)
-      
-      bump_msg()
-      ml_base = msg.get_line_length()
-      
-      for name in self:
-         ml = msg.get_line_length()
-         tok = self.get_argstring(name)
-         
-         if ((ml > ml_base) and ((len(arguments) >= 15) or
-             (ml + len(tok) + 1 > msg.LEN_LIMIT))):
-            rv.append(msg)
-            bump_msg()
-         
-         arguments.insert(-1, tok)
-      
-      if (len(arguments) > 2):
-         rv.append(msg)
-      
+      arglist = [self.get_argstring(name) for name in self]
+      rv = IRCMessage.build_from_arglist(b'005', (nick,),
+         (b'are supported by this server',), arglist, prefix=prefix)
       return rv
 
 
@@ -666,7 +650,7 @@ class IRCClientConnection(AsyncLineStream):
             # Our join.
             if (chnn in self.channels):
                raise IRCProtocolError("Joining channel we're already in.")
-            chan = IRCChannel(chnn)
+            chan = IRCChannel(chnn, cmp_=self.chm_parser)
             self.channels[chnn] = chan
             self.chm_parser.chan_init(chan)
             self.em_chan_join(None, chan)
@@ -854,7 +838,7 @@ class IRCClientConnection(AsyncLineStream):
       self._pc_check(msg, 4)
       chan = self._get_own_chan(msg, msg.parameters[2])
       chan.users = {}
-      for nick_str in msg.parameters[3].split(b' '):
+      for nick_str in msg.parameters[3].split():
          i = 0
          for c in nick_str:
             if (c in self.IRCNICK_INITCHARS):
