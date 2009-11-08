@@ -17,6 +17,7 @@
 
 import logging
 
+from .event_multiplexing import OrderingEventMultiplexer
 from .s2c_structures import *
 from .irc_num_constants import *
 
@@ -44,6 +45,8 @@ class SimpleBNC:
       self.ips_conns = set()
       self.motd = None
       
+      self.em_client_in_msg = OrderingEventMultiplexer(self)
+      
       for name in dir(self):
          attr = getattr(self, name)
          if not (hasattr(attr, 'em_name')):
@@ -62,6 +65,7 @@ class SimpleBNC:
          self.log(40, 'Got bogus shutdown notification for conn {0}.'.format(conn))
       
       self.ips_conns.remove(conn)
+      conn.mgr = None
    
    def _process_potential_nickchange(self):
       newnick = self.nc.get_self_nick()
@@ -121,6 +125,11 @@ class SimpleBNC:
          conn.send_msg(msg)
    
    def _process_client_msg(self, conn, msg):
+      msg.eaten = False
+      self.em_client_in_msg(conn, msg)
+      if (msg.eaten):
+         return
+      
       if (msg.command in (b'PING',b'QUIT')):
          return
       
@@ -130,15 +139,17 @@ class SimpleBNC:
          return
       
       if (msg.command == b'JOIN'):
-         no_new = True
-         for chnn in msg.parse_JOIN():
-            if not (chnn in self.nc.conn.channels):
-               no_new = False
-               continue
-            self._fake_join(conn, chnn)
-         
-         if (no_new):
-            return
+         jd = msg.parse_JOIN()
+         if (jd != 0):
+            no_new = True
+            for chnn in msg.parse_JOIN():
+               if not (chnn in self.nc.conn.channels):
+                  no_new = False
+                  continue
+               self._fake_join(conn, chnn)
+            
+            if (no_new):
+               return
       
       def cb(*args, **kwargs):
          self._process_query_response(conn, *args, **kwargs)
@@ -167,38 +178,3 @@ class SimpleBNC:
       if not (self.nick is None):
          conn.change_nick(self.nick)
    
-
-def main():
-   import sys
-   
-   from gonium.fdm import ED_get
-   from gonium._debugging import streamlogger_setup
-   
-   from .irc_network_client import IRCClientNetworkLink, IRCUserSpec, IRCServerSpec
-   from .irc_pseudoserver import IRCPseudoServer, DefaultAssocHandler
-   
-   nick = sys.argv[1]
-   target_addr = sys.argv[2]
-   
-   us = IRCUserSpec(
-      nicks=(nick.encode('ascii'),),
-      username=b'chimera',
-      realname=b'Luteus test connection'
-   )
-   
-   ss1 = IRCServerSpec(target_addr, 6667)
-   
-   streamlogger_setup()
-   ed = ED_get()()
-   
-   nc = IRCClientNetworkLink(ed, us, (ss1,))
-   nc.conn_init()
-   ips = IRCPseudoServer(ed, (b'127.0.0.1', 6667))
-   bnc = SimpleBNC(nc)
-   ah = DefaultAssocHandler(ed, bnc)
-   ah.attach_ips(ips)
-   
-   ed.event_loop()
-
-if (__name__ == '__main__'):
-   main()

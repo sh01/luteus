@@ -53,7 +53,8 @@ class ComparableCallable:
    
    def __ne__(self, other):
       return not (self is other)
-   
+   def __hash__(self):
+      return hash((self.wrappee, self.priority))
    def __lt__(self, other):
       return (self.__cmp__(other) < 0)
    def __gt__(self, other):

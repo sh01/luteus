@@ -45,7 +45,7 @@ class DefaultAssocHandler:
          return
       
       try:
-         rv_exc = conn.take_connection()
+         conn.take_connection(self.conn_mgr)
       except IRCPSStateError:
          return
       try:
@@ -53,6 +53,7 @@ class DefaultAssocHandler:
       except Exception as exc:
          self.log(40, 'Failed to pass on connection {0}; closing it. Error:'
             .format(conn), exc_info=True)
+         conn.mgr = None
          conn.close()
    
    def handle_msg(self, conn, msg):
@@ -96,7 +97,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
    EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_out_msg', 'em_shutdown')
    def __init__(self, *args, ssts, **kwargs):
       AsyncLineStream.__init__(self, *args, lineseps={b'\n', b'\r'}, **kwargs)
-      self.associated = False
+      self.mgr = None
       self.ssts = ssts
       self.nick = b''
       self.user = None
@@ -121,17 +122,14 @@ class IRCPseudoServerConnection(AsyncLineStream):
       """Process connection closing."""
       self.em_shutdown()
 
-   def take_connection(self):
+   def take_connection(self, mgr):
       """Try to take this connection.
          Mostly intended for use from IRCPS EMs. Will raise an exception if
-         connection has been taken already; otherwise will *return* an
-         exception object for caller to raise iff they were called from an
-         IRCPS EM."""
-      if (self.associated):
+         connection has been taken already."""
+      if not (self.mgr is None):
          raise IRCPSStateError("Already associated.")
       
-      self.associated = True
-      return EAT_ALL()
+      self.mgr = mgr
 
    def process_input(self, line_data_mv):
       """Process IRC data"""
@@ -192,8 +190,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
          if (self.nick is None):
             raise ValueError('No nick for peer known.')
          
-         ia_user = b''.join((self.nick, b'!', self.user, b'@',
-            self.peer_address.encode('ascii')))
+         ia_user = self.get_unhmask()
       
       self.send_msg_num(1, b''.join((b'Welcome to ', netname, b', ', ia_user)))
    
@@ -233,15 +230,17 @@ class IRCPseudoServerConnection(AsyncLineStream):
       """Add channel name to wanted chan set"""
       chann = IRCCIString(chann)
       if (chann in self.wanted_channels):
-         return
+         return False
       self.wanted_channels.add(chann)
+      return True
       
    def wc_remove(self, chann):
       """Remove channel name from wanted chan set"""
       chann = IRCCIString(chann)
       if not (chann in self.wanted_channels):
-         return
+         return False
       self.wanted_channels.remove(chann)
+      return True
    
    def _process_msg_PING(self, msg):
       """Answer PING."""
@@ -296,4 +295,9 @@ class IRCPseudoServerConnection(AsyncLineStream):
    
    def peer_registered(self):
       return bool(self.nick and self.user)
+   
+   def get_unhmask(self):
+      return b''.join((self.nick, b'!', self.user, b'@',
+         self.peer_address.encode('ascii')))
+      
       
