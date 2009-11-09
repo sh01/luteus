@@ -227,8 +227,9 @@ class IRCMessage:
       
       def bump_msg():
          nonlocal args, msg
-         args = list(static_args_b) + list(static_args_e)
-         msg = IRCMessage(prefix, cmd, args)
+         msg = IRCMessage(prefix, cmd, list(static_args_b) +
+            list(static_args_e))
+         args = msg.parameters
       
       bump_msg()
       ml_base = msg.get_line_length()
@@ -242,7 +243,10 @@ class IRCMessage:
             rv.append(msg)
             bump_msg()
          
-         args.insert(ii, arg)
+         if (ii):
+            args.insert(ii, arg)
+         else:
+            args.append(arg)
       
       if (len(args) > (len(static_args_b) + len(static_args_e))):
          rv.append(msg)
