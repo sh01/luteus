@@ -17,6 +17,9 @@
 
 import logging
 
+from .event_multiplexing import OrderingEventMultiplexer
+
+
 class IRCProtocolError(ValueError):
    def __init__(self, msg, *args, **kwargs):
       self.msg = msg
@@ -83,44 +86,128 @@ class IRCCIString(bytes):
    # FIXME: add ordering
 
 
+class Mode:
+   def __init__(self, char, level):
+      self.char = char
+      self.level = level
+   
+   def __repr__(self):
+      return '{0}({1},{2})'.format(self.__class__.__name__, self.char, self.level)
+   def __le__(self, other):
+      return (self.level <= other.level)
+   def __lt__(self, other):
+      return (self.level < other.level)
+   def __ge__(self, other):
+      return (self.level <= other.level)
+   def __gt__(self, other):
+      return (self.level > other.level)
+   def __eq__(self, other):
+      return (self.char == other.char)
+   def __neq__(self, other):
+      return (self.char != other.char)
+   def __hash__(self):
+      return hash(self.char)
+
+
+class S2CProtocolCapabilitySet(dict):
+   """S2C protocol capability set, as communicated by ISUPPORT msgs"""
+   def __init__(self, *args, **kwargs):
+      dict.__init__(self, *args, **kwargs)
+      self.em_argchange = OrderingEventMultiplexer(self)
+   
+   def parse_msg(self, msg):
+      args = list(msg.parameters[1:])
+      
+      if (args and (b' ' in args[-1])):
+         # Probably a silly HR explanation of this line, as specified by
+         # draft-brocklesby-irc-isupport-03.
+         del(args[-1])
+      
+      for arg in args:
+         if (b'=' in arg):
+            (name, val) = arg.split(b'=', 1)
+            val = bytes(val)
+         elif arg.startswith(b'-'):
+            name = arg[1:]
+            val = False
+         else:
+            name = arg
+            val = True
+         
+         name = bytes(name)
+         if ((not (name in self)) or (self[name] != val)):
+            self.em_argchange(name, val)
+         
+         self[name] = val
+   
+   def get_argstring(self, name):
+      val = self[name]
+      if (val is True):
+         return name
+      if (val is False):
+         return (b'-' + name)
+      return b''.join((name, b'=', val))
+   
+   def is_chann(self, tok):
+      """Return whether specified token appears to be a channame."""
+      try:
+         cic = self['CHANTYPES']
+      except KeyError:
+         cic = b'#&+'
+      
+      try:
+         return (tok[0] in cic)
+      except IndexError:
+         return False
+   
+   def get_005_lines(self, nick, prefix=None):
+      arglist = [self.get_argstring(name) for name in self]
+      rv = IRCMessage.build_from_arglist(b'005', (nick,),
+         (b'are supported by this server',), arglist, prefix=prefix)
+      return rv
+
+
 class IRCMessage:
    """An IRC message, as defined by RFC 2812"""
    logger = logging.getLogger()
    log = logger.log
    
+   chan_cmds = set((b'PRIVMSG', b'NOTICE', b'KICK', b'PART', b'JOIN', b'MODE', b'TOPIC'))
    # RFC 1459 and 2812, section 2.3
    LEN_LIMIT = 512
    ARGC_LIMIT = 15
    
-   def __init__(self, prefix:bytes, command:bytes, parameters:bytes, src=None):
+   def __init__(self, prefix:bytes, command:bytes, parameters, src=None,
+         pcs=S2CProtocolCapabilitySet()):
       self.prefix = prefix
       self.command = command.upper()
-      self.parameters = parameters
-      
+      self.parameters = list(parameters)
       self.src = src
+      self.pcs = pcs
    
    def copy(self):
-      return self.__class__(self.prefix, self.command, self.parameters, self.src)
+      return self.__class__(self.prefix, self.command, self.parameters,
+         self.src, self.pcs)
       
    @classmethod
-   def build_from_line(cls, line, src=None):
+   def build_from_line(cls, line, *args, **kwargs):
       """Build instance from raw line"""
-      line_split = line.split(b' ') # RFC 2812 says this is correct.
+      line_split = bytes(line).split(b' ') # RFC 2812 says this is correct.
       if (line.startswith(b':')):
          prefix = IRCAddress(line_split[0][1:])
          command = line_split[1]
          parameters = line_split[2:]
       else:
          prefix = None
-         command = bytes(line_split[0])
+         command = line_split[0]
          parameters = line_split[1:]
       
       i = 0
       while (i < len(parameters)):
          p = parameters[i]
          if (p == b''):
+            # Probably a RFC 1459-style message.
             del(parameters[i])
-            cls.log(20, 'Invalid empty param in line {0!a}; discarding.'.format(line))
             continue
          
          if not (p.startswith(b':')):
@@ -129,7 +216,7 @@ class IRCMessage:
          parameters[i] = b' '.join([parameters[i][1:]] + parameters[i+1:])
          del(parameters[i+1:])
          break
-      return cls(prefix, command, tuple(parameters), src=src)
+      return cls(prefix, command, parameters, *args, **kwargs)
    
    @classmethod
    def build_from_arglist(cls, cmd, static_args_b, static_args_e, arg_list,
@@ -216,9 +303,9 @@ class IRCMessage:
          return 0
       
       rv = {}
-      chnns = bytes(self.parameters[0]).split(b',')
+      chnns = self.parameters[0].split(b',')
       if (len(self.parameters) > 1):
-         keys = bytes(self.parameters[1]).split(b',')
+         keys = self.parameters[1].split(b',')
       else:
          keys = ()
       
@@ -236,8 +323,8 @@ class IRCMessage:
       if (len(self.parameters) < 2):
          raise IRCProtocolError(self)
       
-      chnns = [IRCCIString(b) for b in bytes(self.parameters[0]).split(b',')]
-      nicks = [IRCCIString(b) for b in bytes(self.parameters[1]).split(b',')]
+      chnns = [IRCCIString(b) for b in self.parameters[0].split(b',')]
+      nicks = [IRCCIString(b) for b in self.parameters[1].split(b',')]
       if (len(chnns) == 0):
          raise IRCProtocolError(self)
       
@@ -248,10 +335,37 @@ class IRCMessage:
       
       return zip(chnns,nicks)
    
+   def get_chan_targets(self):
+      """If this message is targeted to one or more channels, return their
+         names; else return None."""
+      if not (self.command.upper() in self.chan_cmds):
+         return None
+      if (len(self.parameters) < 1):
+         return None
+      target_str = self.parameters[0]
+      
+      targets = target_str.split(b',')
+      return [t for t in targets if self.pcs.is_chann(t)]
+   
+   def filter_chan_targets(self, filt):
+      """Adjust chan target set by removing channel-targets for which
+         (not filt(chann)). Returns new number of targets."""
+      if (len(self.parameters) < 1):
+         return
+      
+      targets_new = []
+      for target in self.parameters[0].split(b','):
+         if (self.pcs.is_chann(target) and not (filt(target))):
+            continue
+         targets_new.append(target)
+      
+      self.parameters[0] = b','.join(targets_new)
+      return len(targets_new)
+   
    def parse_PART(self):
       if (len(self.parameters) < 1):
          raise IRCProtocolError(self)
-      return [IRCCIString(b) for b in bytes(self.parameters[0]).split(b',')]
+      return [IRCCIString(b) for b in self.parameters[0].split(b',')]
    
    def __repr__(self):
       return '{0}.build_from_line({1!a})'.format(
@@ -304,27 +418,4 @@ class IRCChannel:
    def __repr__(self):
       return '{0}({1}, {2}, {3}, {4}, {5})'.format(self.__class__.__name__,
          self.chan, self.topic, self.users, self.modes, self.expect_part)
-
-
-class Mode:
-   def __init__(self, char, level):
-      self.char = char
-      self.level = level
-   
-   def __repr__(self):
-      return '{0}({1},{2})'.format(self.__class__.__name__, self.char, self.level)
-   def __le__(self, other):
-      return (self.level <= other.level)
-   def __lt__(self, other):
-      return (self.level < other.level)
-   def __ge__(self, other):
-      return (self.level <= other.level)
-   def __gt__(self, other):
-      return (self.level > other.level)
-   def __eq__(self, other):
-      return (self.char == other.char)
-   def __neq__(self, other):
-      return (self.char != other.char)
-   def __hash__(self):
-      return hash(self.char)
 

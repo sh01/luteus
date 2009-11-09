@@ -355,51 +355,6 @@ class BlockQueryLIST(_BlockQuery):
          (num == RPL_LISTEND))
 
 
-class IRCISUPPORTData(dict):
-   def __init__(self, *args, **kwargs):
-      dict.__init__(self, *args, **kwargs)
-      self.em_argchange = OrderingEventMultiplexer(self)
-   
-   def parse_msg(self, msg):
-      args = list(msg.parameters[1:])
-      
-      if (args and (b' ' in args[-1])):
-         # Probably a silly HR explanation of this line, as specified by
-         # draft-brocklesby-irc-isupport-03.
-         del(args[-1])
-      
-      for arg in args:
-         if (b'=' in arg):
-            (name, val) = arg.split(b'=', 1)
-            val = bytes(val)
-         elif arg.startswith(b'-'):
-            name = arg[1:]
-            val = False
-         else:
-            name = arg
-            val = True
-         
-         name = bytes(name)
-         if ((not (name in self)) or (self[name] != val)):
-            self.em_argchange(name, val)
-         
-         self[name] = val
-   
-   def get_argstring(self, name):
-      val = self[name]
-      if (val is True):
-         return name
-      if (val is False):
-         return (b'-' + name)
-      return b''.join((name, b'=', val))
-   
-   def get_005_lines(self, nick, prefix=None):
-      arglist = [self.get_argstring(name) for name in self]
-      rv = IRCMessage.build_from_arglist(b'005', (nick,),
-         (b'are supported by this server',), arglist, prefix=prefix)
-      return rv
-
-
 class IRCClientConnection(AsyncLineStream):
    logger = logging.getLogger('IRCClientConnection')
    log = logger.log
@@ -445,8 +400,8 @@ class IRCClientConnection(AsyncLineStream):
       self.username = username
       self.mode = mode
       self.modes = set()
-      self.isupport_data = IRCISUPPORTData()
-      self.isupport_data.em_argchange.new_prio_listener(self._process_005_update)
+      self.pcs = S2CProtocolCapabilitySet()
+      self.pcs.em_argchange.new_prio_listener(self._process_005_update)
       
       if (chm_parser is None):
          chm_parser = ChannelModeParser()
@@ -528,7 +483,8 @@ class IRCClientConnection(AsyncLineStream):
          return
       if (line_data == b''):
          return
-      msg = IRCMessage.build_from_line(line_data, src=self)
+      msg = IRCMessage.build_from_line(line_data, src=self,
+         pcs=self.pcs)
       msg.responded = False
       
       if (self.em_in_msg(msg)):
@@ -787,7 +743,7 @@ class IRCClientConnection(AsyncLineStream):
    def _process_msg_005(self, msg):
       """Process RPL_ISUPPORT message"""
       args = list(msg.parameters[1:])
-      self.isupport_data.parse_msg(msg)
+      self.pcs.parse_msg(msg)
    
    # MOTD
    def _process_msg_375(self, msg):

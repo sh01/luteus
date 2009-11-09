@@ -41,7 +41,7 @@ class SimpleBNC:
    def __init__(self, network_conn):
       self.nc = network_conn
       self.nick = network_conn.get_self_nick()
-      self.isupport_data = network_conn.get_isupport_data()
+      self.pcs = network_conn.get_pcs()
       self.ips_conns = set()
       self.motd = None
       
@@ -79,24 +79,33 @@ class SimpleBNC:
    
    @_reg_em('em_shutdown')
    def _process_network_conn_shutdown(self):
-      idn = self.nc.get_isupport_data()
-      self.isupport_data = (idn or self.isupport_data)
+      self.pcs = self._get_pcs()
    
    @_reg_em('em_link_finish')
    def _process_network_link(self):
       self._process_potential_nickchange()
-      self.isupport_data = self.nc.get_isupport_data()
+      self.pcs = self.nc.get_pcs()
    
-   def _get_isupport_data(self):
-      return (self.nc.get_isupport_data() or self.isupport_data)
+   def _get_pcs(self):
+      return (self.nc.get_pcs() or self.pcs)
    
    @_reg_em('em_in_msg_bc')
    def _process_network_bc_msg(self, msg):
       if (msg.command == b'PONG'):
          return
-      
+      def chan_filter(chann):
+         return (chann in ipsc.wanted_channels)
+
       for ipsc in self.ips_conns:
-         ipsc.send_msg(msg)
+         if (not msg.get_chan_targets()):
+            msg_out = msg
+         else:
+            msg_out = msg.copy()
+            target_num = msg_out.filter_chan_targets(chan_filter)
+            if (target_num < 1):
+               continue
+         
+         ipsc.send_msg(msg_out)
    
    @_reg_em('em_out_msg')
    def _process_network_out_msg(self, msg):
@@ -105,10 +114,22 @@ class SimpleBNC:
       msg2 = msg.copy()
       msg2.prefix = (self.nick + self.mirror_postfix)
       
+      def chan_filter(chann):
+         return (chann in ipsc.wanted_channels)
+      
       for ipsc in self.ips_conns:
          if (msg2.src is ipsc):
             continue
-         ipsc.send_msg(msg2)
+         
+         if (not msg.get_chan_targets()):
+            msg_out = msg2
+         else:
+            msg_out = msg2.copy()
+            target_num = msg_out.filter_chan_targets(chan_filter)
+            if (target_num < 1):
+               continue
+         
+         ipsc.send_msg(msg_out)
    
    @_reg_em('em_in_msg')
    def _process_network_msg(self, msg):
@@ -173,7 +194,7 @@ class SimpleBNC:
       conn.send_msg_001()
       conn.send_msg_002()
       conn.send_msg_003()
-      conn.send_msgs_005(self.isupport_data)
+      conn.send_msgs_005(self.pcs)
       
       if not (self.nick is None):
          conn.change_nick(self.nick)
