@@ -99,7 +99,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
       AsyncLineStream.__init__(self, *args, lineseps={b'\n', b'\r'}, **kwargs)
       self.mgr = None
       self.ssts = ssts
-      self.nick = b''
+      self.nick = None
       self.user = None
       self.mode_str = None
       self.realname = None
@@ -179,10 +179,16 @@ class IRCPseudoServerConnection(AsyncLineStream):
       line_out = msg.line_build()
       self.send_bytes((line_out,))
    
+   def _get_nick(self):
+      rv = self.nick
+      if (rv is None):
+         rv = b'*'
+      return rv
+   
    def send_msg_num(self, num, *args):
       """Send numeric to peer"""
       cmd = '{0:03}'.format(num).encode('ascii')
-      msg = IRCMessage(self.self_name, cmd, (self.nick,) + args)
+      msg = IRCMessage(self.self_name, cmd, (self._get_nick(),) + args)
       self.send_msg(msg)
    
    def send_msg_001(self, netname=b'Cruentus IRC bouncer', ia_user=None):
@@ -217,7 +223,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
    
    def send_msg_461(self, cmd):
       self.send_msg(IRCMessage(self.self_name, b'461',
-         (self.nick, cmd, b"Insufficient parameters.")))
+         (self._get_nick(), cmd, b"Insufficient parameters.")))
    
    def change_nick(self, newnick):
       """Force nickchange."""
@@ -253,7 +259,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
       
       if (len(msg.parameters) < 1):
          self.send_msg(IRCMessage(self.self_name, b'431',
-            (b'', b'No nickname given.')))
+            (self._get_nick(), b'No nickname given.')))
          return
       
       self.nick = msg.parameters[0]
@@ -262,7 +268,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
       """Process USER."""
       if (self.user):
          self.send_msg(IRCMessage(self.self_name, b'462',
-            (self.nick, b"You sent a USER line before.")))
+            (self._get_nick(), b"You sent a USER line before.")))
          return
       
       self._pc_check(msg, 4, send_error=True)
