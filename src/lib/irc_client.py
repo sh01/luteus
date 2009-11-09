@@ -652,6 +652,18 @@ class IRCClientConnection(AsyncLineStream):
             break
          del(chan.users[nick])
    
+   def _process_msg_QUIT(self, msg):
+      """Process QUIT message."""
+      if ((msg.prefix is None) or (msg.prefix.type != IA_NICK)):
+         raise IRCPRotocolError('Bogus QUIT prefix.')
+      nick = msg.prefix.nick
+      
+      for chan in self.channels.values():
+         if not (nick in chan.users):
+            continue
+         self.em_chan_leave(msg, nick, chan, nick)
+         del(chan.users[nick])
+   
    def _process_msg_KICK(self, msg):
       """Process KICK message."""
       kick_data = msg.parse_KICK()
