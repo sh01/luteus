@@ -17,6 +17,7 @@
 
 import logging
 import socket
+from socket import AF_INET
 from collections import deque
 
 from .event_multiplexing import OrderingEventMultiplexer
@@ -31,10 +32,17 @@ def get_irc_nick():
 
 
 class IRCServerSpec:
-   def __init__(self, host, port, preference=0):
+   def __init__(self, host, port, preference=0, af=AF_INET, src_address=None):
       self.host = host
       self.port = port
+      self.af = af
+      self.saddr = src_address
       self.o = preference
+   
+   def _get_bt(self):
+      if (self.saddr is None):
+         return None
+      return (self.saddr, 0)
    
    def __cmp__(self, other):
       if (self.o > other.o): return 1
@@ -179,7 +187,7 @@ class IRCClientNetworkLink:
       try:
          conn = self.ircc_cls.irc_build_sock_connect(self.ed, target,
             nick=nick, username=self.us.username, realname=self.us.realname,
-            mode=self.us.mode)
+            mode=self.us.mode, family=server.af, bind_target=server._get_bt())
       except socket.error as exc:
          self.log(30, 'Failed connecting to {0}: {1!a}'.format(target, str(exc)))
          self.shedule_conn_init()
