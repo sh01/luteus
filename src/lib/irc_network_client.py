@@ -111,6 +111,7 @@ class IRCClientNetworkLink:
       
       self.delay_conn_is = conn_delay_is
       self.timer_connect = None
+      self.timer_timeout = None
       
       self.em_names = self.ircc_cls.EM_NAMES
       for em_name in self.em_names:
@@ -161,6 +162,9 @@ class IRCClientNetworkLink:
       was_linked = self.conn.link_done
       self.void_active_conn()
       self.shedule_conn_init()
+      if not (self.timer_timeout is None):
+         self.timer_timeout.cancel()
+         self.timer_timeout = None
       if (was_linked):
          self.server_picker = self.make_server_picker()
    
@@ -214,7 +218,8 @@ class IRCClientNetworkLink:
       def link_watch_finish():
          lwl1.close()
          lwl2.close()
-         tt.cancel()
+         self.timer_timeout.cancel()
+         self.timer_timeout = None
          self._process_link_finish(conn)
          
       lwl1 = conn.em_in_msg.new_prio_listener(link_watch, 512)
@@ -228,7 +233,8 @@ class IRCClientNetworkLink:
          conn.close()
          self.log(30, 'Connection {0!a} timeouted during link.'.format(conn))
       
-      tt = self.ed.set_timer(self.link_timeout, timeout, parent=self)
+      self.timer_timeout = \
+         self.ed.set_timer(self.link_timeout, timeout, parent=self)
       
       self.conn = conn
       for emn in self.em_names:
@@ -242,8 +248,8 @@ class IRCClientNetworkLink:
       for el in self.conn_els:
          el.close()
       del(self.conn_els[:])
-   
-   
+
+
 def _selftest(targethost, tport, username='chimera', realname=b'? ? ?',
       ssl=False):
    import pprint
