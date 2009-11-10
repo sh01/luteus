@@ -32,12 +32,14 @@ def get_irc_nick():
 
 
 class IRCServerSpec:
-   def __init__(self, host, port, preference=0, af=AF_INET, src_address=None):
+   def __init__(self, host, port, preference=0, af=AF_INET, src_address=None,
+         ssl=False):
       self.host = host
       self.port = port
       self.af = af
       self.saddr = src_address
       self.o = preference
+      self.ssl = ssl
    
    def _get_bt(self):
       if (self.saddr is None):
@@ -193,6 +195,9 @@ class IRCClientNetworkLink:
          self.shedule_conn_init()
          return
       
+      if (server.ssl):
+         conn.do_ssl_handshake(lambda: None)
+      
       self.log(20, 'Opening connection {0!a} to {1}.'.format(conn, target))
       
       def link_watch(msg):
@@ -239,7 +244,8 @@ class IRCClientNetworkLink:
       del(self.conn_els[:])
    
    
-def _selftest(targethost, username='chimera', realname=b'? ? ?'):
+def _selftest(targethost, tport, username='chimera', realname=b'? ? ?',
+      ssl=False):
    import pprint
    from gonium.fdm import ED_get
    from gonium._debugging import streamlogger_setup
@@ -252,7 +258,7 @@ def _selftest(targethost, username='chimera', realname=b'? ? ?'):
    servers = (
       IRCServerSpec('nonexistent.nowhere', 1),
       IRCServerSpec('0.0.0.0', 1),
-      IRCServerSpec(targethost, 6667)
+      IRCServerSpec(targethost, tport, ssl=ssl),
    )
    
    def link():
@@ -272,6 +278,13 @@ def _selftest(targethost, username='chimera', realname=b'? ? ?'):
 
 if (__name__ == '__main__'):
    import sys
-   _selftest(sys.argv[1])
+   if (b'--ssl' in sys.argv):
+      ssl = True
+      tport = 6697
+   else:
+      ssl = False
+      tport = 6667
+   
+   _selftest(sys.argv[1], tport, ssl=ssl)
 
 
