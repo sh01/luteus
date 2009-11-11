@@ -47,43 +47,49 @@ class SSLSpec:
    )
    
    def __init__(self, use_certfile=False, use_keyfile=False,
-         ssl_version=PROTOCOL_SSLv23, use_ca_certs=False, cert_reqs=CERT_NONE):
+         ssl_version=PROTOCOL_SSLv23, cert_reqs=CERT_NONE):
       import ssl
       self.em_handshake_finish = OrderingEventMultiplexer(self)
       self.use_certfile = use_certfile
       self.use_keyfile = use_keyfile
-      self.use_ca_certs = use_ca_certs
+      self.use_ca_certs = (cert_reqs != self.CERT_NONE)
       self.cert_reqs = cert_reqs
       self.ssl_version = ssl_version
-      
-   def get_ssl_args(self, host, port):
+   
+   def get_ssl_fn(self, tname, host, port):
+      import os.path
       from hashlib import sha1
       
+      fn = sha1('{0}\x00{1}'.format(host, port).encode('ascii')).hexdigest()
+      return os.path.join(*(self.basepath + self.subdir_map[tname] + (fn,)))
+
+   def get_ssl_args(self, host, port):
       ssl_args = ()
       ssl_kwargs = dict(
          cert_reqs = self.cert_reqs,
          ssl_version = self.ssl_version
       )
-      fn = sha1('{0}\x00{1}'.format(host, port).encode('ascii')).hexdigest()
       
       for varname in ('certfile', 'keyfile', 'ca_certs'):
          if (not getattr(self, 'use_{0}'.format(varname))):
             continue
-         subpath = self.subdir_map[varname]
-         ssl_kwargs[varname] = os.path.join(*(self.basepath + subpath + (fn,)))
+         ssl_kwargs[varname] = self.get_ssl_fn(varname, host, port)
       
       return (ssl_args, ssl_kwargs)
 
 
 class IRCServerSpec:
    def __init__(self, host, port, preference=0, af=AF_INET, src_address=None,
-         ssl_spec=None):
+         ssl=None):
       self.host = host
       self.port = port
       self.af = af
       self.saddr = src_address
-      self.o = preference
-      self.ssl = ssl_spec
+      self.preference = preference
+      self.ssl = ssl
+   
+   def get_ssl_fn(self, tname):
+      return self.ssl.get_ssl_fn(tname, self.host, self.port)
    
    def get_ssl_args(self):
       if (self.ssl is None):
@@ -96,8 +102,8 @@ class IRCServerSpec:
       return (self.saddr, 0)
    
    def __cmp__(self, other):
-      if (self.o > other.o): return 1
-      if (self.o < other.o): return -1
+      if (self.preference > other.preference): return 1
+      if (self.preference < other.preference): return -1
       if (id(self) > id(other)): return 1
       if (id(self) < id(other)): return -1
       return 0
@@ -116,6 +122,10 @@ class IRCServerSpec:
       return (self.__cmp__(other) <= 0)
    def __ge__(self, other):
       return (self.__cmp__(other) >= 0)
+   
+   def __repr__(self):
+      return '{0}({1})'.format(self.__class__.__name__,
+        ', '.join('{0}={1}'.format(*a) for a in self.__dict__.items()))
 
 
 class IRCUserSpec:
@@ -228,6 +238,9 @@ class IRCClientNetworkLink:
       self.timer_connect = self.ed.set_timer(self.delay_conn_is, cb)
    
    def conn_init(self):
+      if (len(self.servers) < 1):
+         raise Exception('Need at least one server to connect to.')
+      
       if not (self.conn is None):
          raise StateError('Connection attempt in progress already.')
       
