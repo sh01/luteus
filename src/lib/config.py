@@ -24,6 +24,11 @@ from .irc_ui import LuteusIRCUI
 
 
 class LuteusConfig:
+   try:
+      from ssl import CERT_OPTIONAL, CERT_REQUIRED, CERT_NONE
+   except ImportError:
+      pass
+   
    def __init__(self, sa=None):
       if (sa is None):
          sa = ServiceAggregate()
@@ -38,8 +43,9 @@ class LuteusConfig:
    def new_network(self, user_spec, servers=[], *args, **kwargs):
       rv = IRCClientNetworkLink(self._sa.ed, user_spec, servers)
       def add_target(*sargs, **skwargs):
-         rv.servers.append(IRCServerSpec(*sargs, **skwargs))
-      
+         s = IRCServerSpec(*sargs, **skwargs)
+         rv.servers.append(s)
+
       rv.add_target = add_target
       self._icncs.append(rv)
       return rv
@@ -77,7 +83,14 @@ class LuteusConfig:
    def _start_connections(self):
       for conn in self._icncs:
          conn.conn_init()
-
+   
+   def _get_servers(self):
+      rv = []
+      for conn in self._icncs:
+         for server in conn.servers:
+            rv.append(server)
+      return rv
+   
    def _event_loop(self):
       self._sa.ed.event_loop()
 
