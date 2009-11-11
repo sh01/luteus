@@ -17,40 +17,36 @@
 
 
 def main():
+   import logging
+   import optparse
+   import os.path
    import sys
    
-   from gonium.fdm import ED_get
+   from .config import LuteusConfig
    from gonium._debugging import streamlogger_setup
    
-   from .irc_network_client import IRCClientNetworkLink, IRCUserSpec, IRCServerSpec
-   from .irc_pseudoserver import IRCPseudoServer, DefaultAssocHandler
-   from .bnc_simple import SimpleBNC
-   from .irc_ui import LuteusIRCUI
-   
-   nick = sys.argv[1]
-   target_addr = sys.argv[2]
-   
-   us = IRCUserSpec(
-      nicks=(nick.encode('ascii'),),
-      username=b'chimera',
-      realname=b'Luteus test connection'
-   )
-   
-   ss1 = IRCServerSpec(target_addr, 6667)
-   
    streamlogger_setup()
-   ed = ED_get()()
+   logger = logging.getLogger()
+   log = logger.log
    
-   nc = IRCClientNetworkLink(ed, us, (ss1,))
-   nc.conn_init()
-   ips = IRCPseudoServer(ed, (b'127.0.0.1', 6667))
-   bnc = SimpleBNC(nc)
-   ah = DefaultAssocHandler(ed, bnc)
-   ah.attach_ips(ips)
-   iui = LuteusIRCUI()
-   iui.attach_bnc(bnc)
+   op = optparse.OptionParser()
+   op.add_option('--dir', default='~/.luteus', help='Directory to chdir to', metavar='DIR')
+   op.add_option('--config', default='luteus.conf', help='Config file to use', metavar='FILE')
    
-   ed.event_loop()
+   (opts, args) = op.parse_args()
+   
+   tpath = os.path.expanduser(opts.dir)
+   log(20, 'CDing to {0!a}.'.format(tpath))
+   os.chdir(tpath)
+   conf_fn = opts.config
+   
+   conf = LuteusConfig()
+   log(20, 'Loading config from {0!a}.'.format(conf_fn))
+   conf.load_config_by_fn(conf_fn)
+
+   conf._start_connections()
+   conf._event_loop()
+
 
 if (__name__ == '__main__'):
    main()
