@@ -21,7 +21,7 @@ from socket import AF_INET
 from collections import deque
 
 from .event_multiplexing import OrderingEventMultiplexer
-from .s2c_structures import IRCMessage
+from .s2c_structures import IRCMessage, S2CProtocolCapabilitySet
 from .irc_client import IRCClientConnection
 from .irc_num_constants import *
 
@@ -31,15 +31,64 @@ def get_irc_nick():
    return ('C{0:x}'.format(random.getrandbits(32)).encode('ascii'))
 
 
+class SSLSpec:
+   try:
+      import ssl
+   except ImportError:
+      PROTOCOL_SSLv23 = CERT_NONE = None
+   else:
+      from ssl import PROTOCOL_SSLv23, CERT_NONE
+   
+   basepath = ('ssl',)
+   subdir_map = dict(
+      certfile = ('ul_self_certs',),
+      keyfile = ('ul_self_keys',),
+      ca_certs = ('ul_server_certs',)
+   )
+   
+   def __init__(self, use_certfile=False, use_keyfile=False,
+         ssl_version=PROTOCOL_SSLv23, use_ca_certs=False, cert_reqs=CERT_NONE):
+      import ssl
+      self.em_handshake_finish = OrderingEventMultiplexer(self)
+      self.use_certfile = use_certfile
+      self.use_keyfile = use_keyfile
+      self.use_ca_certs = use_ca_certs
+      self.cert_reqs = cert_reqs
+      self.ssl_version = ssl_version
+      
+   def get_ssl_args(self, host, port):
+      from hashlib import sha1
+      
+      ssl_args = ()
+      ssl_kwargs = dict(
+         cert_reqs = self.cert_reqs,
+         ssl_version = self.ssl_version
+      )
+      fn = sha1('{0}\x00{1}'.format(host, port).encode('ascii')).hexdigest()
+      
+      for varname in ('certfile', 'keyfile', 'ca_certs'):
+         if (not getattr(self, 'use_{0}'.format(varname))):
+            continue
+         subpath = self.subdir_map[varname]
+         ssl_kwargs[varname] = os.path.join(*(self.basepath + subpath + (fn,)))
+      
+      return (ssl_args, ssl_kwargs)
+
+
 class IRCServerSpec:
    def __init__(self, host, port, preference=0, af=AF_INET, src_address=None,
-         ssl=False):
+         ssl_spec=None):
       self.host = host
       self.port = port
       self.af = af
       self.saddr = src_address
       self.o = preference
-      self.ssl = ssl
+      self.ssl = ssl_spec
+   
+   def get_ssl_args(self):
+      if (self.ssl is None):
+         return None
+      return self.ssl.get_ssl_args(self.host, self.port)
    
    def _get_bt(self):
       if (self.saddr is None):
@@ -134,7 +183,7 @@ class IRCClientNetworkLink:
    def get_pcs(self):
       """Get current ISUPPORT data."""
       if not (self.conn):
-         return IRCISUPPORTData()
+         return S2CProtocolCapabilitySet()
       return self.conn.pcs
    
    def em_new(self, attr):
@@ -199,8 +248,11 @@ class IRCClientNetworkLink:
          self.shedule_conn_init()
          return
       
-      if (server.ssl):
-         conn.do_ssl_handshake(lambda: None)
+      ssl_data = server.get_ssl_args()
+      if not (ssl_data is None):
+         def cb():
+            server.ssl.em_handshake_finish(conn)
+         conn.do_ssl_handshake(cb, *ssl_data[0], **ssl_data[1])
       
       self.log(20, 'Opening connection {0!a} to {1}.'.format(conn, target))
       
