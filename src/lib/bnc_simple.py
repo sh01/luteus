@@ -22,10 +22,11 @@ from .s2c_structures import *
 from .irc_num_constants import *
 
 
-def _reg_em(em_name):
+def _reg_em(em_name, priority=0):
    """Function decorator to specify self.nc-em to reg on instance init"""
    def dc(func):
       func.em_name = em_name
+      func.em_priority = priority
       return func
    return dc
 
@@ -51,7 +52,15 @@ class SimpleBNC:
          attr = getattr(self, name)
          if not (hasattr(attr, 'em_name')):
             continue
-         getattr(self.nc, attr.em_name).new_prio_listener(attr)
+         getattr(self.nc, attr.em_name).new_prio_listener(attr, attr.em_priority)
+   
+   def put_msg_network(self, msg, cb=lambda *a, **k: None, *args, **kwargs):
+      """Send message to network, iff we are currently connected. Else,
+         it's silently discarded."""
+      c = self.nc.conn
+      if not (c):
+         return
+      c.put_msg(msg, cb, *args, **kwargs)
    
    def _process_query_response(self, conn, query):
       if not (conn):
@@ -77,14 +86,31 @@ class SimpleBNC:
       for ipsc in self.ips_conns:
          ipsc.change_nick(self.nick)
    
-   @_reg_em('em_shutdown')
+   @_reg_em('em_shutdown', -1024)
    def _process_network_conn_shutdown(self):
       self.pcs = self._get_pcs()
+      ex_chans = self.nc.conn.channels
+      for ipsc in self.ips_conns:
+         for chan in ipsc.wanted_channels:
+            if not (chan in ex_chans):
+               continue
+            ipsc.send_msg(IRCMessage(ipsc.self_name, b'KICK',
+               (chan, ipsc.nick, b'Luteus<->network link severed.'), src=self))
    
    @_reg_em('em_link_finish')
    def _process_network_link(self):
       self._process_potential_nickchange()
       self.pcs = self.nc.get_pcs()
+      
+      # Rejoin wanted chans
+      chans_wanted = set()
+      for ipsc in self.ips_conns:
+         chans_wanted.update(ipsc.wanted_channels)
+      
+      msgs = list(IRCMessage.build_ml_onearg(b'JOIN', (), (),
+         list(chans_wanted), b','))
+      for msg in msgs:
+         self.put_msg_network(msg)
    
    def _get_pcs(self):
       return (self.nc.get_pcs() or self.pcs)
@@ -113,12 +139,13 @@ class SimpleBNC:
          return
       msg2 = msg.copy()
       msg2.prefix = (self.nick + self.mirror_postfix)
+      msg2.src = self
       
       def chan_filter(chann):
          return (chann in ipsc.wanted_channels)
       
       for ipsc in self.ips_conns:
-         if (msg2.src is ipsc):
+         if (msg.src is ipsc):
             continue
          
          if (not msg.get_chan_targets()):

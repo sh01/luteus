@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with luteus.  If not, see <http://www.gnu.org/licenses/>.
 
+from collections import deque
 import logging
 
 from .event_multiplexing import OrderingEventMultiplexer
@@ -162,9 +163,81 @@ class S2CProtocolCapabilitySet(dict):
    
    def get_005_lines(self, nick, prefix=None):
       arglist = [self.get_argstring(name) for name in self]
-      rv = IRCMessage.build_from_arglist(b'005', (nick,),
+      rv = IRCMessage.build_ml_args(b'005', (nick,),
          (b'are supported by this server',), arglist, prefix=prefix)
       return rv
+
+class _MultiLineCmdBase:
+   def __init__(self, i, args, len_limit, argc_limit):
+      self.len_limit = len_limit
+      self.msg = None
+      self.argc_limit = argc_limit
+      self.args = deque(args)
+      self.i = i
+   
+   def set_msg(self, msg):
+      self.msg = msg
+   
+   def __bool__(self):
+      return bool(self.args)
+
+class _MultLineCmdArglist(_MultiLineCmdBase):
+   def __init__(self, i, args, len_limit, argc_limit):
+      super().__init__(i, args, len_limit, argc_limit)
+   
+   def have_space(self):
+      len_new = self.msg.get_line_length() + len(self.args[0]) + 1
+      if (len_new > self.len_limit):
+         return False
+      if (self.argc_limit is None):
+         return True
+      if (len(self.msg.parameters) >= self.argc_limit):
+         return False
+      return True
+   
+   def add(self):
+      arg = self.args.popleft()
+      if (self.i is None):
+         self.msg.parameters.append(arg)
+      else:
+         self.msg.parameters.insert(self.i, arg)
+
+class _MultiLineCmdOneArg(_MultiLineCmdBase):
+   def __init__(self, i, args, len_limit, argc_limit, joinchar):
+      super().__init__(i, args, len_limit, argc_limit)
+      self.joiner = joinchar
+      self.ac = 0
+   
+   def have_space(self):
+      if (self.ac > self.argc_limit):
+         return False
+      
+      arg = self.msg.parameters[self.i or -1]
+      if (arg):
+         jo = len(self.joiner)
+      else:
+         jo = 0
+      
+      len_new = self.msg.get_line_length() + len(self.args[0]) + jo
+      if (len_new > self.len_limit):
+         return False
+      return True
+   
+   def add(self):
+      sub_arg = self.args.popleft()
+      p = self.msg.parameters
+      i = self.i or -1
+      arg = p[i]
+      if (arg):
+         arg = self.joiner.join((arg, sub_arg))
+      else:
+         arg = sub_arg
+      p[i] = arg
+      self.ac += 1
+
+   def set_msg(self, msg):
+      super().set_msg(msg)
+      self.ac = 0
 
 
 class IRCMessage:
@@ -219,36 +292,41 @@ class IRCMessage:
       return cls(prefix, command, parameters, *args, **kwargs)
    
    @classmethod
-   def build_from_arglist(cls, cmd, static_args_b, static_args_e, arg_list,
+   def build_ml_args(cls, cmd, static_args_b, static_args_e, arg_list,
          prefix=None, len_limit=LEN_LIMIT, argc_limit=ARGC_LIMIT):
-      rv = []
-      args = None
-      msg = None
+      msg = IRCMessage(prefix, cmd, list(static_args_b) +
+         list(static_args_e))
       
-      def bump_msg():
-         nonlocal args, msg
-         msg = IRCMessage(prefix, cmd, list(static_args_b) +
-            list(static_args_e))
-         args = msg.parameters
+      i = -1*len(static_args_e) or None
+      mlc = _MultLineCmdArglist(i, arg_list, len_limit, argc_limit)
       
-      bump_msg()
+      return cls.build_mlcmd_msgs(msg, mlc)
+   
+   @classmethod
+   def build_ml_onearg(cls, cmd, static_args_b, static_args_e, subarg_list,
+      join_el, prefix=None, len_limit=LEN_LIMIT, argc_limit=ARGC_LIMIT):
+   
+      msg = IRCMessage(prefix, cmd, list(static_args_b) + [b''] + list(static_args_e))
+      i = -1*len(static_args_e) or None
+      mlc = _MultiLineCmdOneArg(i, subarg_list, len_limit, argc_limit, join_el)
+      return cls.build_mlcmd_msgs(msg, mlc)
+   
+   @classmethod
+   def build_mlcmd_msgs(cls, msg_base, mlc):
+      msg = msg_base.copy()
+      mlc.set_msg(msg)
+      
       ml_base = msg.get_line_length()
-      
-      ii = -1*len(static_args_e)
-      for arg in arg_list:
-         ml = msg.get_line_length()
-         
-         if ((ml > ml_base) and (argc_limit and (len(args) >= argc_limit)) or
-            (ml + len(arg) + 1 > len_limit)):
+      rv = []
+      while (mlc):
+         if ((msg.parameters != msg_base.parameters) and (not mlc.have_space())):
             rv.append(msg)
-            bump_msg()
+            msg = msg_base.copy()
+            mlc.set_msg(msg)
          
-         if (ii):
-            args.insert(ii, arg)
-         else:
-            args.append(arg)
+         mlc.add()
       
-      if (len(args) > (len(static_args_b) + len(static_args_e))):
+      if (msg.parameters != msg_base.parameters):
          rv.append(msg)
       
       return rv
@@ -393,17 +471,8 @@ class IRCChannel:
       for (nick, modes) in self.users.items():
          userstrings.append(self.cmp.get_uflagstring(modes) + nick)
       
-      msgs = list(IRCMessage.build_from_arglist(b'353',
-         (target, b'=', self.chan), (b'a',), userstrings, argc_limit=None,
-         prefix=prefix))
-      
-      # Really ugly hack to get the message format right.
-      for msg in msgs:
-         p = msg.parameters
-         del(p[-1])
-         pstr = b' '.join(p[3:])
-         del(p[3:])
-         p.append(pstr)
+      msgs = list(IRCMessage.build_ml_onearg(b'353', (target, b'=', self.chan),
+         (), userstrings, b' ', prefix=prefix))
       
       msgs.append(IRCMessage(prefix, b'366', (target, self.chan, b'End of NAMES list')))
       return msgs
