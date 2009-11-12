@@ -25,6 +25,9 @@ __NUM_specs = (
    (312, 'RPL_WHOISSERVER'),
    (313, 'RPL_WHOISOPERATOR'),
    (314, 'RPL_WHOWASUSER'),
+   
+   (315, 'RPL_ENDOFWHO'),
+   
    (317, 'RPL_WHOISIDLE'),
    (318, 'RPL_ENDOFWHOIS'),
    (319, 'RPL_WHOISCHANNELS'),
@@ -35,6 +38,9 @@ __NUM_specs = (
    
    (331, 'RPL_NOTOPIC'),
    (332, 'RPL_TOPIC'),
+   
+   (352, 'RPL_WHOREPLY'),
+   
    (353, 'RPL_NAMREPLY'),
    (366, 'RPL_ENDOFNAMES'),
    (324, 'RPL_CHANNELMODEIS'),
