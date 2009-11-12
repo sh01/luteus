@@ -119,6 +119,16 @@ class SimpleBNC:
    def _process_network_bc_msg(self, msg):
       if (msg.command == b'PONG'):
          return
+      if (msg.command == b'ERROR'):
+         if (len(msg.parameters) > 0):
+            errstr = b' ' + msg.parameters[0]
+         else:
+            errstr = b''
+         
+         msg = IRCMessage(None, b'PRIVMSG',
+               (ipsc.nick, b'ERROR:' + errstr), src=self)
+         msg.trim_last_arg()
+      
       def chan_filter(chann):
          return (chann in ipsc.wanted_channels)
 

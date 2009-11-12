@@ -355,6 +355,20 @@ class IRCMessage:
       
       return rv
    
+   def trim_last_arg(self):
+      """If current length is over LEN_LIMIT, trim trailing arg to match."""
+      l = get_line_length()
+      overrun = l-LEN_LIMIT
+      if (overrun <= 0):
+         return 0
+      
+      p = self.parameters[-1]
+      if (len(p) < overrun):
+         raise ValueError('Trailing arg not long enough to make this work.')
+      
+      self.parameters[-1] = p[:-1*overrun]
+      return overrun
+   
    def get_cmd_numeric(self):
       try:
          rv = int(self.command)
