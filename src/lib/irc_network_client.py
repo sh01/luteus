@@ -158,7 +158,7 @@ class IRCClientNetworkLink:
    
    link_timeout = 30
    
-   def __init__(self, ed, user_spec, servers, conn_delay_is=10):
+   def __init__(self, ed, netname, user_spec, servers, conn_delay_is=10):
       self.ed = ed
       self.us = user_spec
       self.conn = None
@@ -176,25 +176,38 @@ class IRCClientNetworkLink:
       for em_name in self.em_names:
          self.em_new(em_name)
       
+      self.netname = netname
       self.em_shutdown.new_prio_listener(self._process_conn_shutdown)
    
    def is_linked(self):
       """Return whether we are linked to the network."""
-      if not (self.conn):
+      if (not self.conn):
          return False
       return self.conn.link_done
    
    def get_self_nick(self):
       """Get currently used nick."""
-      if not (self.conn):
+      if (not self.conn):
          return None
       return self.conn.nick
    
    def get_pcs(self):
       """Get current ISUPPORT data."""
-      if not (self.conn):
+      if (not self.conn):
          return S2CProtocolCapabilitySet()
       return self.conn.pcs
+   
+   def get_peer(self):
+      """Get name of current peer."""
+      if (not self.conn):
+         return None
+      return self.conn.peer
+   
+   def get_channels(self):
+      """Return active channels."""
+      if (not self.conn):
+         return {}
+      return self.conn.channels
    
    def em_new(self, attr):
       """Instantiate new EventMultiplexer attribute"""
@@ -339,7 +352,7 @@ def _selftest(targethost, tport, username='chimera', realname=b'? ? ?',
    streamlogger_setup()
    ed = ED_get()()
    
-   irccnl = IRCClientNetworkLink(ed, us, servers, conn_delay_is=5)
+   irccnl = IRCClientNetworkLink(ed, None, us, servers, conn_delay_is=5)
    irccnl.em_link_finish.new_prio_listener(link)
    
    irccnl.conn_init()

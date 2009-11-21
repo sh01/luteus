@@ -40,8 +40,8 @@ class LuteusConfig:
             continue
          self._config_ns[name] = getattr(self, name)
       
-   def new_network(self, user_spec, servers=[], *args, **kwargs):
-      rv = IRCClientNetworkLink(self._sa.ed, user_spec, servers)
+   def new_network(self, netname, user_spec, servers=[], *args, **kwargs):
+      rv = IRCClientNetworkLink(self._sa.ed, netname, user_spec, servers)
       def add_target(*sargs, **skwargs):
          s = IRCServerSpec(*sargs, **skwargs)
          rv.servers.append(s)
