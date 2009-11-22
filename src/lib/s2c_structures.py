@@ -431,6 +431,11 @@ class IRCMessage:
       
       return zip(chnns,nicks)
    
+   def parse_PART(self):
+      if (len(self.parameters) < 1):
+         raise IRCProtocolError(self)
+      return [IRCCIString(b) for b in self.parameters[0].split(b',')]
+   
    def get_chan_targets(self):
       """If this message is targeted to one or more channels, return their
          names; else return None."""
@@ -458,10 +463,32 @@ class IRCMessage:
       self.parameters[0] = b','.join(targets_new)
       return len(targets_new)
    
-   def parse_PART(self):
-      if (len(self.parameters) < 1):
-         raise IRCProtocolError(self)
-      return [IRCCIString(b) for b in self.parameters[0].split(b',')]
+   def get_notarget_args(self):
+      """Return args, minus target spec."""
+      rv = self.args.copy()
+      cmd = self.command
+      if (rv and (cmd in self.chan_cmds)):
+         del(rv[0])
+      return rv
+   
+   def split_ctcp(self):
+      """Split last arg into CTCP and text portions."""
+      args = self.args.copy()
+      la_split = args[-1].split(b'\x01')
+      
+      text_frags = []
+      ctcp_frags = []
+      ctcp = False
+      
+      for frag in la_split:
+         if (ctcp):
+            ctcp_frags.append(frag)
+         else:
+            text_frags.append(frag)
+         
+         ctcp = (not ctcp)
+      
+      return (text_frags, ctcp_frags)
    
    def __repr__(self):
       return '{0}.build_from_line({1!a})'.format(
@@ -480,10 +507,14 @@ class IRCChannel:
       self.expect_part = expect_part
       self.cmp = cmp_
    
-   def make_names_reply(self, target, prefix=None):
-      userstrings = []
+   def get_uflag_strings(self):
+      rv = []
       for (nick, modes) in self.users.items():
-         userstrings.append(self.cmp.get_uflagstring(modes) + nick)
+         rv.append(self.cmp.get_uflagstring(modes) + nick)
+      return rv
+   
+   def make_names_reply(self, target, prefix=None):
+      userstrings = self.get_uflag_strings()
       
       msgs = list(IRCMessage.build_ml_onearg(b'353', (target, b'=', self.chan),
          (), userstrings, b' ', prefix=prefix))
