@@ -76,7 +76,13 @@ class BLFormatter:
       return self.time_cfmt.format(e.get_time_str(self.time_fmt)).encode('ascii')
    
    def format_sender(self, e):
-      return b''.join((b'<', e.src, b'>'))
+      src = e.src
+      try:
+         src = src.nick
+      except AttributeError:
+         pass
+      
+      return b''.join((b'<', src, b'>'))
    
    def format_ctcp(self, e, ctcp_data):
       return b' '.join((self.format_sender(e), b'CTCP:', ctcp_data))
@@ -101,7 +107,7 @@ class BLFormatter:
       ctcps = []
       if (isinstance(e, LogLine)):
          cmd = e.msg.command
-         text = cmd
+         text = b' '.join((cmd, self.format_sender(e)))
          if (cmd in (b'PRIVMSG', b'NOTICE')):
             (tf, ctcps) = e.msg.split_ctcp()
             text_ext = b' ' + b''.join(tf)
@@ -123,8 +129,7 @@ class BLFormatter:
       if (text is None):
          rv = []
       else:
-         rv = self._make_msgs(prefix, chan, ts_str,
-            b' '.join((self.format_sender(e), text)))
+         rv = self._make_msgs(prefix, chan, ts_str, text)
 
       for ctcp in ctcps:
          text = self.format_ctcp(e, ctcp)
