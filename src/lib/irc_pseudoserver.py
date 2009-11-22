@@ -105,7 +105,6 @@ class IRCPseudoServerConnection(AsyncLineStream):
       self.realname = None
       self.wanted_channels = set()
       
-      self.channels = None
       self.self_name = b'luteus.bnc'
       self.peer_address = self.fl.getpeername()[0]
       
