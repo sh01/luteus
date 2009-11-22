@@ -104,7 +104,12 @@ class BLFormatter:
          text = cmd
          if (cmd in (b'PRIVMSG', b'NOTICE')):
             (tf, ctcps) = e.msg.split_ctcp()
-            text += b' ' + b''.join(tf)
+            text_ext = b' ' + b''.join(tf)
+            
+            if (text_ext == b' '):
+               text = None
+            else:
+               text += text_ext
          else:
             text += b' ' + b' '.join(e.msg.get_notarget_parameters())
       elif (isinstance(e, LogChanSnapshot)):
@@ -115,8 +120,11 @@ class BLFormatter:
          raise TypeError('Unable to process entry {0!a}.'.format(e))
       
       ts_str = self.format_ts(e)
-      rv = self._make_msgs(prefix, chan, ts_str,
-         b' '.join((self.format_sender(e), text)))
+      if (text is None):
+         rv = []
+      else:
+         rv = self._make_msgs(prefix, chan, ts_str,
+            b' '.join((self.format_sender(e), text)))
 
       for ctcp in ctcps:
          text = self.format_ctcp(e, ctcp)
