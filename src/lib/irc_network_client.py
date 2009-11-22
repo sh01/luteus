@@ -203,16 +203,19 @@ class IRCClientNetworkLink:
          return None
       return self.conn.peer
    
-   def get_peer_address(self):
+   def get_peer_address(self, stale=False):
       """Return address we've connected to."""
       if (not self.conn):
-         return None
+         if ((self.conn is None) or (not stale)):
+            return None
+      
       return self.conn.peer_address
    
-   def get_channels(self):
+   def get_channels(self, stale=False):
       """Return active channels."""
       if (not self.conn):
-         return {}
+         if ((self.conn is None) or (not stale)):
+            return None
       return self.conn.channels
    
    def em_new(self, attr):

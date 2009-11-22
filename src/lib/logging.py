@@ -121,7 +121,7 @@ class BLFormatter:
       elif (isinstance(e, LogChanSnapshot)):
          return
       elif (isinstance(e, LogConnShutdown)):
-         text = "Bouncer disconnected from {0}.".format(e.peer_addr).encode('ascii')
+         text = "Bouncer disconnected from remote {0!a}.".format(e.peer_addr).encode('ascii')
       else:
          raise TypeError('Unable to process entry {0!a}.'.format(e))
       
@@ -228,8 +228,8 @@ class _Logger:
       return rv
    
    def _process_conn_shutdown(self):
-      for chan in self.nc.get_channels():
-         self._get_file(chan).put_record(LogConnShutdown(self.nc.get_peer_address()))
+      for chan in self.nc.get_channels(stale=True):
+         self._get_file(chan).put_record(LogConnShutdown(self.nc.get_peer_address(stale=True)))
    
    def _process_msg_in(self, msg):
       src = msg.prefix
