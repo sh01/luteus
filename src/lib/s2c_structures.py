@@ -374,10 +374,10 @@ class IRCMessage:
       
       return rv
    
-   def trim_last_arg(self):
+   def trim_last_arg(self, len_limit=LEN_LIMIT):
       """If current length is over LEN_LIMIT, trim trailing arg to match."""
-      l = get_line_length()
-      overrun = l-LEN_LIMIT
+      l = self.get_line_length()
+      overrun = l-len_limit
       if (overrun <= 0):
          return 0
       
@@ -482,17 +482,17 @@ class IRCMessage:
       self.parameters[0] = b','.join(targets_new)
       return len(targets_new)
    
-   def get_notarget_args(self):
-      """Return args, minus target spec."""
-      rv = self.args.copy()
+   def get_notarget_parameters(self):
+      """Return parameters, minus target spec."""
+      rv = list(self.parameters)
       cmd = self.command
       if (rv and (cmd in self.chan_cmds)):
          del(rv[0])
       return rv
    
    def split_ctcp(self):
-      """Split last arg into CTCP and text portions."""
-      args = self.args.copy()
+      """Split last parameter into CTCP and text portions."""
+      args = list(self.parameters)
       la_split = args[-1].split(b'\x01')
       
       text_frags = []

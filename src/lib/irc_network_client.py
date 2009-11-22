@@ -203,6 +203,12 @@ class IRCClientNetworkLink:
          return None
       return self.conn.peer
    
+   def get_peer_address(self):
+      """Return address we've connected to."""
+      if (not self.conn):
+         return None
+      return self.conn.peer_address
+   
    def get_channels(self):
       """Return active channels."""
       if (not self.conn):

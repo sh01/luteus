@@ -95,7 +95,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
    log = logger.log
    
    EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_out_msg', 'em_shutdown')
-   def __init__(self, *args, ssts, **kwargs):
+   def __init__(self, *args, ssts, self_name=b'luteus.bnc', **kwargs):
       AsyncLineStream.__init__(self, *args, lineseps={b'\n', b'\r'}, **kwargs)
       self.mgr = None
       self.ssts = ssts
@@ -105,7 +105,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
       self.realname = None
       self.wanted_channels = set()
       
-      self.self_name = b'luteus.bnc'
+      self.self_name = self_name
       self.peer_address = self.fl.getpeername()[0]
       
       for name in self.EM_NAMES:

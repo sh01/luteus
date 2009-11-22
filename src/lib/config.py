@@ -62,11 +62,12 @@ class LuteusConfig:
    def new_ssl_spec(self, *args, **kwargs):
       return SSLSpec(*args, **kwargs)
    
-   def new_bnc(self, *args, attach_ui=True, **kwargs):
+   def new_bnc(self, *args, attach_ui=True, attach_bl=True, **kwargs):
       rv = SimpleBNC(*args, **kwargs)
       if (attach_ui):
-         iui = LuteusIRCUI()
-         iui.attach_bnc(rv)
+         iui = LuteusIRCUI(rv)
+      if (attach_bl):
+         rv.attach_backlogger()
       return rv
    
    def attach_ps2bnc_default(self, ps, bnc):

@@ -15,11 +15,13 @@
 # You should have received a copy of the GNU General Public License
 # along with luteus.  If not, see <http://www.gnu.org/licenses/>.
 
+import os.path
 import logging
 
 from .event_multiplexing import OrderingEventMultiplexer
 from .s2c_structures import *
 from .irc_num_constants import *
+from .logging import BackLogger, BLFormatter
 
 
 def _reg_em(em_name, priority=0):
@@ -39,12 +41,19 @@ class SimpleBNC:
    mirror_cmds = set((b'PRIVMSG', b'NOTICE'))
    mirror_postfix = b'!user@cruentus.bnc'
    
-   def __init__(self, network_conn):
+   BL_BASEDIR_DEFAULT = os.path.join(b'data', b'backlog')
+   
+   def __init__(self, network_conn, blf=None):
       self.nc = network_conn
       self.nick = network_conn.get_self_nick()
       self.pcs = network_conn.get_pcs()
       self.ips_conns = set()
       self.motd = None
+      self.bl = None
+      if (blf is None):
+         blf = BLFormatter()
+      
+      self.blf = blf
       
       self.em_client_in_msg = OrderingEventMultiplexer(self)
       
@@ -205,7 +214,9 @@ class SimpleBNC:
                   no_new = False
                   continue
                self._fake_join(conn, chnn)
-            
+               msgs = self.blf.format_backlog(self.bl, conn.self_name, chnn)
+               for msg in msgs:
+                  conn.send_msg(msg)
             if (no_new):
                return
       
@@ -213,6 +224,11 @@ class SimpleBNC:
          self._process_query_response(conn, *args, **kwargs)
       
       self.nc.conn.put_msg(msg, cb)
+   
+   def attach_backlogger(self, basedir=BL_BASEDIR_DEFAULT):
+      if not (self.bl is None):
+         raise Exception('Backlogger attached already.')
+      self.bl = BackLogger(basedir, self.nc)
    
    def take_ips_connection(self, conn):
       if (not conn):
