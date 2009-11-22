@@ -61,9 +61,7 @@ class ChannelModeParser:
          level += 1
    
    def get_uflagstring(self, modes):
-      modes = list(modes)
-      modes.sort()
-      return b''.join([self.umodes2flags[m.char] for m in modes])
+      return b''.join([self.umodes2flags[m.char] for m in reversed(sorted(modes))])
    
    def process_ISUPPORT_PREFIX(self, prefix):
       """Process PREFIX arg value from RPL_ISUPPORT(005) message"""
