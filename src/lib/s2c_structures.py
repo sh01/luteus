@@ -65,6 +65,20 @@ class IRCAddress(bytes):
       if (self.type == IA_SERVER):
          return (self == other)
       return (self.nick == other.nick)
+   
+# Python 3.1 has a nasty bug which, among other things, prevents subclasses
+# of bytes of being pickled directly. We work around it here. Brute Force And
+# Ignorance style.
+   def __reduce_ex__(self, proto):
+      if (proto < 3):
+         raise TypeError('No. You want at least version 3.')
+      
+      from binascii import b2a_hex
+      return (_IA_build_from_hex, (b2a_hex(self).decode('ascii'),), None, None, None)
+
+def _IA_build_from_hex(hex_str):
+   from binascii import a2b_hex
+   return IRCAddress(a2b_hex(hex_str.encode('ascii')))
 
 
 class IRCCIString(bytes):
@@ -165,6 +179,11 @@ class S2CProtocolCapabilitySet(dict):
       arglist = [self.get_argstring(name) for name in self]
       rv = IRCMessage.build_ml_args(b'005', (nick,),
          (b'are supported by this server',), arglist, prefix=prefix)
+      return rv
+
+   def __getstate__(self):
+      rv = self.__dict__.copy()
+      rv['em_argchange'] = None
       return rv
 
 class _MultiLineCmdBase:
