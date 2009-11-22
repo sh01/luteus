@@ -737,6 +737,25 @@ class IRCClientConnection(AsyncLineStream):
       self.chm_parser.set_chmodes(self.log, chan, msg.parameters[1:])
       self.em_chmode(chan, msg.parameters)
    
+   def _process_msg_NICK(self, msg):
+      """Process NICK message."""
+      if ((msg.prefix is None) or (msg.prefix.type != IA_NICK)):
+         raise IRCProtocolError('Non-nick sending NICK.')
+      
+      self._pc_check(msg, 1)
+      old_nick = msg.prefix.nick
+      new_nick = msg.parameters[0]
+      
+      if (old_nick == self.nick):
+         self.log(20, 'Changed nick from {0} to {1}.'.format(old_nick, new_nick))
+         self.nick = new_nick
+      
+      for chan in self.channels.values():
+         if not (old_nick in chan.users):
+            continue
+         chan.users[new_nick] = chan.users[old_nick]
+         del(chan.users[old_nick])
+   
    # connect numerics
    def _process_msg_001(self, msg):
       """Process RPL_WELCOME message."""
