@@ -16,7 +16,7 @@
 # along with luteus.  If not, see <http://www.gnu.org/licenses/>.
 
 import collections
-from optparse import OptionParser
+from optparse import OptionParser, Option
 
 from .s2c_structures import *
 
@@ -92,11 +92,10 @@ def _encode_if_str(s, encoding='ascii'):
 class LuteusIRCUI:
    OptSpec = collections.namedtuple('OptSpec', ('help', 'short_opt'))
    
-   def __init__(self):
+   def __init__(self, bnc):
       self.els = set()
+      self.bnc = bnc
       self._op_setup()
-   
-   def attach_bnc(self, bnc):
       self.els.add(bnc.em_client_in_msg.new_prio_listener(self.process_msg))
    
    def _op_setup(self):
@@ -122,8 +121,12 @@ class LuteusIRCUI:
             opt_names = []
          
          opt_names += as_.kwonlyargs
-         op = LuteusOP(usage='usage: %prog [options]' +
-            ''.join(' {0}'.format(a) for a in args))
+         usage = 'usage: %prog [options]' + \
+            ''.join(' {0}'.format(a) for a in args)
+         if (as_.varargs):
+            usage += ' {0}*'.format(as_.varargs)
+         
+         op = LuteusOP(usage=usage)
          op.prog = val.cmd
          
          for arg in opt_names:
@@ -157,7 +160,7 @@ class LuteusIRCUI:
          return
       
       ui_args_str = [_decode_if_valid(a) for a in ui_args]
-      self.process_cmd(ui_args_str[0], ui_args_str, ctx)
+      self.process_cmd(ui_args_str[0].upper(), ui_args_str, ctx)
    
    def process_cmd(self, cmd, raw_args, ctx):
      try:
@@ -182,7 +185,7 @@ class LuteusIRCUI:
         return
      
      args = [_encode_if_str(a) for a in args]
-     kwargs = dict(((key, _encode_if_str(v)) for (key, v) in opts.__dict__))
+     kwargs = dict(((key, _encode_if_str(v)) for (key, v) in opts.__dict__.items()))
      func(ctx, *args, **kwargs)
    
    def rch(cmd):
@@ -207,7 +210,25 @@ class LuteusIRCUI:
       if (ctx.cc.wc_remove(chan)):
          ctx.cc.send_msg(IRCMessage(ctx.cc.get_unhmask(), b'PART', (chan,
             b'Luteus LPART-triggered fake part.')))
+   
+   @rch("BLRESET")
+   def _pc_blreset(self, ctx, *chans,
+      quiet:OptSpec("Don't confirm success.", 'q')=False):
+      bl = self.bnc.bl
+      if (bl is None):
+         ctx.output(b'No backlogger active.')
+         return
+      if (not chans):
+         chans = ctx.cc.wanted_channels.keys()
       
+      for chan in chans:
+         bl.reset_bl(chan)
+      
+      if (quiet):
+         return
+      
+      ctx.output(b'Reset backlog for chans ' + b' '.join(chans) + b'.')
+   
    del(rch)
    del(OS)
 
