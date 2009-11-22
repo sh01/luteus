@@ -135,7 +135,7 @@ class SimpleBNC:
             errstr = b''
          
          msg = IRCMessage(None, b'PRIVMSG',
-               (ipsc.nick, b'ERROR:' + errstr), src=self)
+               (self.nc.get_self_nick(), b'ERROR:' + errstr), src=self)
          msg.trim_last_arg()
       
       def chan_filter(chann):
