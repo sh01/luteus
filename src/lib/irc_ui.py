@@ -89,8 +89,11 @@ def _encode_if_str(s, encoding='ascii'):
       return s.encode(encoding)
    return s
 
+_OptSpec = collections.namedtuple('OptSpec', ('args', 'kwargs'))
+
 class LuteusIRCUI:
-   OptSpec = collections.namedtuple('OptSpec', ('help', 'short_opt'))
+   def OS(*args, **kwargs):
+      return _OptSpec(list(args), kwargs)
    
    def __init__(self, bnc):
       self.els = set()
@@ -130,11 +133,10 @@ class LuteusIRCUI:
          op.prog = val.cmd
          
          for arg in opt_names:
-            os = as_.annotations[arg]
-            opt_args = ('--{0}'.format(arg),)
-            if (os.short_opt):
-               opt_args = ('-{0}'.format(os.short_opt),) + opt_args
-            opt = Option(*opt_args, default=dv[arg])
+            (oa, okwa) = as_.annotations[arg]
+            oa.append('--{0}'.format(arg))
+            okwa['default'] = dv[arg]
+            opt = Option(*oa, **okwa)
             op.add_option(opt)
          
          if not (as_.varargs is None):
@@ -195,10 +197,6 @@ class LuteusIRCUI:
          return c
       return d
    
-   def OS(help, short_opt=None):
-      """Helper: build OptSpec"""
-      return OptSpec(help, short_opt)
-   
    @rch("LPART")
    def _pc_connpart(self, ctx, chan):
       cc = ctx.cc
@@ -213,19 +211,30 @@ class LuteusIRCUI:
    
    @rch("BLRESET")
    def _pc_blreset(self, ctx, *chans,
-      quiet:OptSpec("Don't confirm success.", 'q')=False):
+      quiet:OS('-q', help="Don't confirm success.", action='store_true')=False,
+      nicks:OS('-n', help="Reset nick backlog.", action='store_true')=False,
+      activechans:OS(help="Add channels active on this connection to reset set.",
+      action='store_true')=False):
       bl = self.bnc.bl
       if (bl is None):
          ctx.output(b'No backlogger active.')
          return
-      if (not chans):
-         chans = ctx.cc.wanted_channels.keys()
+      
+      chans = set([IRCCIString(c) for c in chans])
+      if (activechans):
+         chans.update(ctx.cc.wanted_channels)
+      
+      if (nicks):
+         chans.add(None)
       
       for chan in chans:
          bl.reset_bl(chan)
       
       if (quiet):
          return
+      
+      if (nicks):
+         chans.remove(None)
       
       ctx.output(b'Reset backlog for chans ' + b' '.join(chans) + b'.')
    
