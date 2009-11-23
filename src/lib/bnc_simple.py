@@ -251,4 +251,9 @@ class SimpleBNC:
       
       if not (self.nick is None):
          conn.change_nick(self.nick)
+      
+      if (self.bl):
+         msgs = self.blf.format_backlog(self.bl, conn.self_name, None)
+         for msg in msgs:
+            conn.send_msg(msg)
    
