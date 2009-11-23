@@ -67,18 +67,13 @@ class IRCAddress(bytes):
       return (self.nick == other.nick)
    
 # Python 3.1 has a nasty bug which, among other things, prevents subclasses
-# of bytes of being pickled directly. We work around it here. Brute Force And
-# Ignorance style.
+# of bytes of being pickled directly. We work around it here, using the same
+# method as bytearray.
    def __reduce_ex__(self, proto):
       if (proto < 3):
          raise TypeError('No. You want at least version 3.')
       
-      from binascii import b2a_hex
-      return (_IA_build_from_hex, (b2a_hex(self).decode('ascii'),), None, None, None)
-
-def _IA_build_from_hex(hex_str):
-   from binascii import a2b_hex
-   return IRCAddress(a2b_hex(hex_str.encode('ascii')))
+      return (type(self), (self.decode('latin-1'),'latin-1'), None, None, None)
 
 
 class IRCCIString(bytes):
