@@ -335,6 +335,8 @@ class _Logger:
    def _get_fn(self, ctx):
       if (ctx is None):
          ctx = b'nicks\x07'
+      else:
+         ctx = ctx.normalize()
       return os.path.join(self.basedir, self.nc.netname.encode(), ctx)
    
 
@@ -343,14 +345,6 @@ class BackLogger(_Logger):
    def reset_bl(self, ctx):
       f = self._get_file(ctx)
       f.clear_records()
-      if (ctx is None):
-         return
-      
-      try:
-         chan = self.nc.channels[ctx]
-      except KeyError:
-         return
-      f.put_record(LogChanSnapshot(ctx))
    
    def get_bl(self, ctx):
       return self._get_file(ctx).get_records()

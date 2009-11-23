@@ -93,6 +93,8 @@ class IRCCIString(bytes):
       return not (self == other)
    def __hash__(self):
       return bytes.__hash__(self.translate(self.LOWERMAP))
+   def normalize(self):
+      return self.translate(self.LOWERMAP)
    # FIXME: add ordering
 
 
@@ -260,6 +262,7 @@ class IRCMessage:
    log = logger.log
    
    chan_cmds = set((b'PRIVMSG', b'NOTICE', b'KICK', b'PART', b'JOIN', b'MODE', b'TOPIC'))
+   nick_cmds = set((b'PRIVMSG', b'NOTICE'))
    # RFC 1459 and 2812, section 2.3
    LEN_LIMIT = 512
    ARGC_LIMIT = 15
@@ -450,17 +453,39 @@ class IRCMessage:
          raise IRCProtocolError(self)
       return [IRCCIString(b) for b in self.parameters[0].split(b',')]
    
+   def get_targets(self):
+      """Return a (nicks, chans) pair listing the nicks and chans this
+         message is targeted to."""
+      cmd = self.command.upper()
+      if not (cmd in self.chan_cmds):
+         return (None, None)
+      if (len(self.parameters) < 1):
+         return (None, None)
+
+      chans = []
+      nicks = []
+      
+      for t in self.parameters[0].split(b','):
+         cit = IRCCIString(t)
+         if (self.pcs.is_chann(t)):
+            chans.append(IRCCIString(cit))
+         else:
+            nicks.append(IRCCIString(cit))
+      
+      if not (cmd in self.nick_cmds):
+         nicks = None
+      
+      return (nicks, chans)
+   
    def get_chan_targets(self):
       """If this message is targeted to one or more channels, return their
-         names; else return None."""
-      if not (self.command.upper() in self.chan_cmds):
-         return None
-      if (len(self.parameters) < 1):
-         return None
-      target_str = self.parameters[0]
-      
-      targets = target_str.split(b',')
-      return [t for t in targets if self.pcs.is_chann(t)]
+         names; else return None or []."""
+      return self.get_targets()[1]
+   
+   def get_nick_targets(self):
+      """If this message is targeted to one or more nicks, return their names;
+         else return None or []"""
+      return self.get_targets()[0]
    
    def filter_chan_targets(self, filt):
       """Adjust chan target set by removing channel-targets for which
