@@ -40,6 +40,12 @@ class LogEntry:
       
       return time.strftime(fmt, tt)
 
+   def get_replay_target(self, bl_context):
+      return bl_context
+   
+   def get_replay_source(self, lname):
+      return lname
+
 
 class LogLine(LogEntry):
    def __init__(self, msg, src, outgoing, ts=None):
@@ -48,6 +54,17 @@ class LogLine(LogEntry):
       self.src = src
       self.outgoing = outgoing
 
+class ChanLogLine(LogLine):
+   pass
+
+class NickLogLine(LogLine):
+   def get_replay_target(self, bl_context):
+      return self.src
+   
+   def get_replay_source(self, lname):
+      if (self.outgoing):
+         return self.msg.parameters[0]
+      return self.src
 
 class LogChanSnapshot(LogEntry):
    def __init__(self, chan_data, ts=None):
@@ -62,9 +79,11 @@ class LogConnShutdown(LogEntry):
 
 
 class BLFormatter:
-   def __init__(self, time_fmt=LogEntry.TS_FMT_DEFAULT, time_color=None):
+   def __init__(self, time_fmt=LogEntry.TS_FMT_DEFAULT, time_color=None,
+         nmcl_color=None):
       self.time_fmt = time_fmt
       self.set_time_color(time_color)
+      self.set_nomsg_channel_line_color(nmcl_color)
    
    def set_time_color(self, c=None):
       if (c is None):
@@ -72,20 +91,42 @@ class BLFormatter:
       else:
          self.time_cfmt = '\x03{0:02}{{0}}\x0f'.format(c)
    
+   def set_nomsg_channel_line_color(self, c=None):
+      if (c is None):
+         self.nmcl_prefix = b''
+      else:
+         self.nmcl_prefix = '\x03{0:02}'.format(c).encode('ascii')
+   
    def format_ts(self, e):
       return self.time_cfmt.format(e.get_time_str(self.time_fmt)).encode('ascii')
    
-   def format_sender(self, e):
+   def format_line_prefix(self, e, cmd=None):
       src = e.src
       try:
          src = src.nick
       except AttributeError:
          pass
       
-      return b''.join((b'<', src, b'>'))
+      if (cmd is None):
+         cmd = e.msg.command
+      
+      if (isinstance(e, NickLogLine)):
+         if (e.outgoing):
+            rv =  b'<'
+         else:
+            rv = b'>'
+         if not (cmd in (b'PRIVMSG', b'NOTICE')):
+            rv = b' '.join((cmd, rv))
+         return rv
+      
+      if (cmd in (b'PRIVMSG', b'NOTICE')):
+         rv = b''.join((b'<', src, b'>'))
+      else:
+         rv = b' '.join((cmd, src))
+      return rv
    
    def format_ctcp(self, e, ctcp_data):
-      return b' '.join((self.format_sender(e), b'CTCP:', ctcp_data))
+      return b' '.join((self.format_line_prefix(e, b'CTCP'), ctcp_data))
    
    def _make_msgs(self, prefix, chan, tpf, text):
       msg1 = IRCMessage(prefix, b'PRIVMSG', [chan, b' '.join((tpf, text))])
@@ -101,14 +142,20 @@ class BLFormatter:
       
       return rv
    
-   def format_entry(self, prefix, chan, e):
-      """Return list of PRIVMSGs to replay given backlog entry to given chan
-         with given prefix."""
+   def format_entry(self, lname, orig_target, e):
+      """Return list of PRIVMSGs to replay given backlog entry originally
+         targeted to orig_target with luteus name lname."""
       ctcps = []
       if (isinstance(e, LogLine)):
-         cmd = e.msg.command
-         text = b' '.join((cmd, self.format_sender(e)))
-         if (cmd in (b'PRIVMSG', b'NOTICE')):
+         msg_like = e.msg.command in (b'PRIVMSG', b'NOTICE')
+         if not (msg_like):
+            text = self.nmcl_prefix
+         else:
+            text = b''
+         
+         text += self.format_line_prefix(e)
+         
+         if (msg_like):
             (tf, ctcps) = e.msg.split_ctcp()
             text_ext = b' ' + b''.join(tf)
             
@@ -117,7 +164,7 @@ class BLFormatter:
             else:
                text += text_ext
          else:
-            text += b' ' + b' '.join(e.msg.get_notarget_parameters())
+            text += self.nmcl_prefix + b' '.join(e.msg.get_notarget_parameters())
       elif (isinstance(e, LogChanSnapshot)):
          return
       elif (isinstance(e, LogConnShutdown)):
@@ -126,23 +173,25 @@ class BLFormatter:
          raise TypeError('Unable to process entry {0!a}.'.format(e))
       
       ts_str = self.format_ts(e)
+      rt = e.get_replay_target(orig_target)
+      rs = e.get_replay_source(lname)
       if (text is None):
          rv = []
       else:
-         rv = self._make_msgs(prefix, chan, ts_str, text)
+         rv = self._make_msgs(rs, rt, ts_str, text)
 
       for ctcp in ctcps:
          text = self.format_ctcp(e, ctcp)
-         rv.extend(self._make_msgs(prefix, chan, ts_str, text))
+         rv.extend(self._make_msgs(rs, rt, ts_str, text))
       
       return rv
    
-   def format_backlog(self, bl, prefix, chan):
+   def format_backlog(self, bl, lname, orig_target):
       """Return list of privmsgs to format entire backlog."""
-      bles = bl.get_bl(chan)
+      bles = bl.get_bl(orig_target)
       rv = []
       for entry in bles:
-         rv.extend(self.format_entry(prefix, chan, entry))
+         rv.extend(self.format_entry(lname, orig_target, entry))
       
       return rv
 
@@ -227,9 +276,13 @@ class _Logger:
       
       return rv
    
+   def _put_record_file(self, ctx, r):
+      self._get_file(ctx).put_record(r)
+   
    def _process_conn_shutdown(self):
+      r = LogConnShutdown(self.nc.get_peer_address(stale=True))
       for chan in self.nc.get_channels(stale=True):
-         self._get_file(chan).put_record(LogConnShutdown(self.nc.get_peer_address(stale=True)))
+         self._put_record_file(chan, r)
    
    def _process_msg_in(self, msg):
       src = msg.prefix
@@ -252,12 +305,17 @@ class _Logger:
       msg2 = msg.copy()
       msg2.src = None
       
-      bll = LogLine(msg2, src, outgoing)
-      chans = msg.get_chan_targets()
-      if not (chans is None):
+      bll = ChanLogLine(msg2, src, outgoing)
+      (nicks, chans) = msg.get_targets()
+      
+      if (chans):
          for chan in chans:
-            self._get_file(chan).put_record(bll)
-         return
+            self._put_record_file(chan, bll)
+      
+      if (nicks):
+         bll_nick = NickLogLine(msg2, src, outgoing)
+         for nick in nicks:
+            self._put_record_file(nick, bll_nick)
       
       if not (msg.command.upper() in self.BC_AUXILIARY):
          return
@@ -272,23 +330,34 @@ class _Logger:
             chans.remove(chan)
       
       for chan in chans:
-         self._get_file(chan).put_record(bll)
+         self._put_record_file(chan, bll)
       
-   def _get_fn(self, chan):
-      return os.path.join(self.basedir, self.nc.netname.encode(), chan)
+   def _get_fn(self, ctx):
+      if (ctx is None):
+         ctx = b'nicks\x07'
+      return os.path.join(self.basedir, self.nc.netname.encode(), ctx)
    
 
 class BackLogger(_Logger):
    file_cls = BacklogFile
-   def reset_bl(self, chann):
-      f = self._get_file(chan)
+   def reset_bl(self, ctx):
+      f = self._get_file(ctx)
       f.clear_records()
+      if (ctx is None):
+         return
+      
       try:
-         chan = self.nc.channels[chann]
+         chan = self.nc.channels[ctx]
       except KeyError:
          return
-      f.put_record(LogChanSnapshot(chan))
+      f.put_record(LogChanSnapshot(ctx))
    
-   def get_bl(self, chann):
-      return self._get_file(chann).get_records()
+   def get_bl(self, ctx):
+      return self._get_file(ctx).get_records()
+   
+   def _put_record_file(self, ctx, r):
+      if (isinstance(r, NickLogLine)):
+         ctx = None
+      super()._put_record_file(ctx, r)
+   
 
