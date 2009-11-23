@@ -24,6 +24,8 @@ from .irc_ui import LuteusIRCUI
 
 
 class LuteusConfig:
+   from .logging import BLFormatter
+   
    try:
       from ssl import CERT_OPTIONAL, CERT_REQUIRED, CERT_NONE
    except ImportError:
