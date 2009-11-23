@@ -279,24 +279,9 @@ class IRCPseudoServerConnection(AsyncLineStream):
       """Process JOIN."""
       chnns = msg.parse_JOIN()
       if (chnns == 0):
-         self.wanted_channels.clear()
          return
       for chnn in chnns:
          self.wc_add(chnn)
-   
-   def _process_msg_PART(self, msg):
-      """Process PART."""
-      chnns = msg.parse_PART()
-      for chnn in chnns:
-         self.wc_remove(chnn)
-   
-   def _process_msg_KICK(self, msg):
-      """Process KICK."""
-      kick_data = msg.parse_KICK()
-      for (chan, nick) in zip(chnns, nicks):
-         if (nick != self.nick):
-            continue
-         self.wc_remove(chnn)
    
    def peer_registered(self):
       return bool(self.nick and self.user)
