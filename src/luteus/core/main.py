@@ -143,6 +143,10 @@ def main():
    
    conf = LuteusConfig()
    log(20, 'Loading config from {0!a}.'.format(conf_fn))
+   
+   # Best to be paranoid for logs, etc.
+   os.umask(0o77)
+   
    conf.load_config_by_fn(conf_fn)
 
    

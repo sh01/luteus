@@ -42,13 +42,19 @@ class LuteusConfig:
             continue
          self._config_ns[name] = getattr(self, name)
       
-   def new_network(self, netname, user_spec, servers=[], *args, **kwargs):
+   def new_network(self, netname, user_spec, servers=[], log_dir=b'log',
+         *args, **kwargs):
       rv = IRCClientNetworkLink(self._sa.ed, netname, user_spec, servers)
+      
       def add_target(*sargs, **skwargs):
          s = IRCServerSpec(*sargs, **skwargs)
          rv.servers.append(s)
 
       rv.add_target = add_target
+      
+      if not (log_dir is None):
+         rv.attach_new_logger(b'log')
+      
       self._icncs.append(rv)
       return rv
    

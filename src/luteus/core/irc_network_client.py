@@ -24,7 +24,7 @@ from .event_multiplexing import OrderingEventMultiplexer
 from .s2c_structures import IRCMessage, S2CProtocolCapabilitySet
 from .irc_client import IRCClientConnection
 from .irc_num_constants import *
-
+from .logging import HRLogger
 
 def get_irc_nick():
    import random
@@ -178,6 +178,10 @@ class IRCClientNetworkLink:
       
       self.netname = netname
       self.em_shutdown.new_prio_listener(self._process_conn_shutdown)
+   
+   def attach_new_logger(self, basedir, *args, **kwargs):
+      """Instantiate new HRLogger and attach to this instance."""
+      HRLogger(basedir=basedir, nc=self, *args, **kwargs)
    
    def is_linked(self):
       """Return whether we are linked to the network."""

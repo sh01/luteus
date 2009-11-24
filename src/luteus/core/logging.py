@@ -32,13 +32,16 @@ class LogEntry:
          ts = time.time()
       self.ts = ts
    
-   def get_time_str(self, fmt=TS_FMT_DEFAULT, localtime=True):
+   def get_time_str(self, fmt=None, localtime=True):
+      if (fmt is None):
+         fmt = self.TS_FMT_DEFAULT
+      
       if (localtime):
          tt = time.localtime(self.ts)
       else:
          tt = time.gmtime(self.ts)
       
-      return time.strftime(fmt, tt)
+      return time.strftime(fmt, tt).encode()
 
    def get_replay_target(self, bl_context):
       return bl_context
@@ -66,20 +69,17 @@ class NickLogLine(LogLine):
          return self.msg.parameters[0]
       return self.src
 
-class LogChanSnapshot(LogEntry):
-   def __init__(self, chan_data, ts=None):
-      super().__init__(ts)
-      self.chan_data = chan_data
-
-
 class LogConnShutdown(LogEntry):
    def __init__(self, peer_addr, ts=None):
       super().__init__(ts)
       self.peer_addr = peer_addr
+   
+   def get_text(self):
+      return ("Bouncer disconnected from remote {0!a}.".format(self.peer_addr).encode('ascii'))
 
 
 class BLFormatter:
-   def __init__(self, time_fmt=LogEntry.TS_FMT_DEFAULT, time_color=None,
+   def __init__(self, time_fmt=None, time_color=None,
          nmcl_color=None):
       self.time_fmt = time_fmt
       self.set_time_color(time_color)
@@ -168,12 +168,8 @@ class BLFormatter:
                text += text_ext
          else:
             text += self.nmcl_prefix + b' '.join(e.msg.get_notarget_parameters())
-      elif (isinstance(e, LogChanSnapshot)):
-         return
-      elif (isinstance(e, LogConnShutdown)):
-         text = "Bouncer disconnected from remote {0!a}.".format(e.peer_addr).encode('ascii')
       else:
-         raise TypeError('Unable to process entry {0!a}.'.format(e))
+         text = e.get_text()
       
       ts_str = self.format_ts(e)
       rt = e.get_replay_target(orig_target)
@@ -199,29 +195,32 @@ class BLFormatter:
       return rv
 
 
+def _get_locked_file(fn):
+   try:
+      f = open(fn, 'r+b')
+   except EnvironmentError:
+      try:
+         os.makedirs(os.path.dirname(fn))
+      except OSError as exc:
+         from errno import EEXIST
+         if (exc.errno != EEXIST):
+            raise
+      f = open(fn, 'w+b')
+   else:
+      f.seek(0,2)
+      
+   import fcntl
+   fcntl.lockf(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+   return f
+
+
 class BacklogFile:
    def __init__(self, fn):
       self.fn = fn
       self._open_file()
       
    def _open_file(self):
-      fn = self.fn
-      try:
-         f = open(fn, 'r+b')
-      except EnvironmentError:
-         try:
-            os.makedirs(os.path.dirname(fn))
-         except OSError as exc:
-            from errno import EEXIST
-            if (exc.errno != EEXIST):
-               raise
-         f = open(fn, 'w+b')
-      else:
-         f.seek(0,2)
-      
-      import fcntl
-      fcntl.lockf(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-      
+      f = _get_locked_file(self.fn)
       import pickle
       self.f = f
       self.p = pickle.Pickler(f)
@@ -254,6 +253,32 @@ class BacklogFile:
    def close(self):
       self.f.close()
 
+
+class HRLogFile:
+   def __init__(self, fn, gmtime=True, time_fmt=None):
+      self.fn = fn
+      self.f = _get_locked_file(fn)
+      self.gmtime = gmtime
+      self.time_fmt = time_fmt
+   
+   def format_record(self, r):
+      rv_l = [r.get_time_str(self.time_fmt, localtime=not self.gmtime), b' ']
+      if (isinstance(r, LogLine)):
+         if (r.outgoing):
+            rv_l.append(b'< ')
+         else:
+            rv_l.append(b'> ')
+         rv_l.append(r.msg.line_build().rstrip(b'\r\n'))
+      else:
+         rv_l.append(r.get_text())
+      
+      rv_l.append(b'\n')
+      return b''.join(rv_l)
+   
+   def put_record(self, r):
+      text = self.format_record(r)
+      self.f.write(text)
+      self.f.flush()
 
 class LogFilter:
    def __init__(self):
@@ -321,7 +346,7 @@ class _Logger:
       try:
          rv = self._storage[chan]
       except KeyError:
-         rv = self.file_cls(self._get_fn(chan))
+         rv = self.make_file(self._get_fn(chan))
          self._storage[chan] = rv
       
       return rv
@@ -378,8 +403,15 @@ class _Logger:
       
       if (nicks):
          bll_nick = NickLogLine(msg2, src, outgoing)
-         for nick in nicks:
-            self._put_record_file(nick, bll_nick)
+         if (outgoing):
+            for nick in nicks:
+               self._put_record_file(nick, bll_nick)
+         else:
+            if (src.is_nick()):
+               bll_src = IRCCIString(src.nick)
+            else:
+               bll_src = IRCCIString(src)
+            self._put_record_file(bll_src, bll_nick)
       
       if not (msg.command.upper() in self.BC_AUXILIARY):
          return
@@ -403,9 +435,19 @@ class _Logger:
          ctx = ctx.normalize()
       return os.path.join(self.basedir, self.nc.netname.encode(), ctx)
    
+   
+class HRLogger(_Logger):
+   def __init__(self, *args, gmtime=True, time_fmt=None, **kwargs):
+      self.gmtime = gmtime
+      self.time_fmt = time_fmt
+      super().__init__(*args, **kwargs)
+   
+   def make_file(self, fn):
+      return HRLogFile(fn, self.gmtime, self.time_fmt)
+
 
 class BackLogger(_Logger):
-   file_cls = BacklogFile
+   make_file = BacklogFile
    def reset_bl(self, ctx):
       f = self._get_file(ctx)
       f.clear_records()
@@ -417,5 +459,3 @@ class BackLogger(_Logger):
       if (isinstance(r, NickLogLine)):
          ctx = None
       super()._put_record_file(ctx, r)
-   
-
