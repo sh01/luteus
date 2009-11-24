@@ -271,6 +271,8 @@ class LogFilter:
       self._eatable_nicks.add(IRCCIString(n))
    
    def __call__(self, ctx, r):
+      if not (isinstance(r, LogLine)):
+         return True
       prefix = r.msg.prefix
       if ((prefix is None) or (prefix.is_server())):
          if (self._eat_all_servers and ()):
