@@ -64,6 +64,7 @@ class DefaultAssocHandler:
       
 
 class IRCPseudoServer(AsyncSockServer):
+   conn_timeout = 30
    def __init__(self, ed, *args, **kwargs):
       self.ed = ed
       self.start_ts = time.time()
@@ -75,6 +76,8 @@ class IRCPseudoServer(AsyncSockServer):
    
    def connect_process(self, sock, addressinfo):
       conn = IRCPseudoServerConnection(self.ed, sock, ssts=self.start_ts)
+      conn.sock_set_keepalive(1)
+      conn.sock_set_keepidle(self.conn_timeout, self.conn_timeout, 2)
       def eh(msg):
          if (self.em_in_msg(conn, msg)):
             el.close()

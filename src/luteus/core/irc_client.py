@@ -368,6 +368,7 @@ class IRCClientConnection(AsyncLineStream):
    
    timeout = 64
    maintenance_delay = 32
+   conn_timeout = 30
    
    EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_in_msg_bc', 'em_out_msg',
       'em_link_finish', 'em_shutdown', 'em_chmode', 'em_chan_join',
@@ -436,6 +437,9 @@ class IRCClientConnection(AsyncLineStream):
          self._perform_maintenance, parent=self, persist=True)
       
       AsyncLineStream.__init__(self, ed, *args, lineseps={b'\n', b'\r'}, **kwargs)
+      
+      self.sock_set_keepalive(1)
+      self.sock_set_keepidle(self.conn_timeout, self.conn_timeout, 2)
    
    def em_new(self, attr):
       """Instantiate new EventMultiplexer attribute"""
