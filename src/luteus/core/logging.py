@@ -25,7 +25,7 @@ from .s2c_structures import IRCMessage, IRCCIString, IRCAddress, IA_SERVER
 
 
 class LogEntry:
-   TS_FMT_DEFAULT = '%Y-%m-%dT%H:%M:%S'
+   TS_FMT_DEFAULT = '%Y-%m-%d %H:%M:%S'
    
    def __init__(self, ts=None):
       if (ts is None):
