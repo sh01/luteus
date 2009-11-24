@@ -260,6 +260,46 @@ class _MultiLineCmdOneArg(_MultiLineCmdBase):
       super().set_msg(msg)
       self.ac = 0
 
+class _MultiLineCmdJOIN(_MultiLineCmdBase):
+   def __init__(self, args, len_limit, argc_limit):
+      super().__init__(None, args, len_limit, argc_limit)
+      self.ac = 0
+   
+   def _get_next(self):
+      (chan,key) = self.args[0]
+      if (key is None):
+         key = b''
+      return (chan, key)
+   
+   def have_space(self):
+      if ((not (self.argc_limit is None)) and (self.ac > self.argc_limit)):
+         return False
+      
+      (chan, key) = self._get_next()
+      
+      if (key is None):
+         key = b''
+      
+      len_plus = len(chan) + len(key)
+      if (self.ac):
+         # Need additional commas before these sub-entries.
+         len_plus += 2
+      return (self.msg.get_line_length() + len_plus > self.len_limit)
+   
+   def add(self):
+      (chan, key) = self._get_next()
+      self.args.popleft()
+      if (self.ac):
+         chan = b',' + chan
+         key = b',' + key
+      
+      self.msg.parameters[0] += chan
+      self.msg.parameters[1] += key
+   
+   def set_msg(self, msg):
+      super().set_msg(msg)
+      self.ac = 0
+
 
 class IRCMessage:
    """An IRC message, as defined by RFC 2812"""
@@ -331,6 +371,12 @@ class IRCMessage:
       msg = IRCMessage(prefix, cmd, list(static_args_b) + [b''] + list(static_args_e))
       i = -1*len(static_args_e) or None
       mlc = _MultiLineCmdOneArg(i, subarg_list, len_limit, argc_limit, join_el)
+      return cls.build_mlcmd_msgs(msg, mlc)
+   
+   @classmethod
+   def build_ml_JOIN(cls, prefix, args, len_limit=LEN_LIMIT, argc_limit=None):
+      mlc = _MultiLineCmdJOIN(args, len_limit, argc_limit)
+      msg = IRCMessage(prefix, b'JOIN', list((b'', b'')))
       return cls.build_mlcmd_msgs(msg, mlc)
    
    @classmethod

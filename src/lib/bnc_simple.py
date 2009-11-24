@@ -114,12 +114,8 @@ class SimpleBNC:
       # Rejoin wanted chans
       chans_wanted = set()
       for ipsc in self.ips_conns:
-         chans_wanted.update(ipsc.wanted_channels)
-      
-      msgs = list(IRCMessage.build_ml_onearg(b'JOIN', (), (),
-         list(chans_wanted), b','))
-      for msg in msgs:
-         self.put_msg_network(msg)
+         for chan in ipsc.wanted_channels:
+            self.nc.conn.add_autojoin_channel(chan)
    
    def _get_pcs(self):
       return (self.nc.get_pcs() or self.pcs)

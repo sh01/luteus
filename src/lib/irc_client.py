@@ -426,6 +426,9 @@ class IRCClientConnection(AsyncLineStream):
       for name in self.EM_NAMES:
          self.em_new(name)
       
+      self._chan_autojoin_tried = {}
+      self._chan_autojoin_pending = {}
+      
       self.em_in_msg.new_prio_listener(self.process_input_statekeeping)
       self.em_in_msg.new_prio_listener(self.process_input_query_fetch, -1024)
       
@@ -477,7 +480,42 @@ class IRCClientConnection(AsyncLineStream):
             return query
       
       self.send_msg(msg)
+   
+   def add_autojoin_channel(self, chan, key=None):
+      """Attempt to join a channel on this connection.
+         This should only be used by event handlers that do autojoins of
+         channels on connection init (hence the name), and all such requests
+         will be batched, avoiding attempts to join the same channel several
+         times, as well as use of unnecessarily many JOIN lines.
+         
+         If called several times for the same channel but with different keys,
+         the key ultimately used on the join attempt is undefined."""
+      try:
+         nonew = (key == self._chan_autojoin_tried[chan])
+      except KeyError:
+         nonew = False
       
+      if (nonew):
+         return
+      
+      timer_set = bool(self._chan_autojoin_pending)
+      self._chan_autojoin_pending[chan] = key
+      
+      if (not timer_set):
+         self._ed.set_timer(0, self._autojoin_channels, interval_relative=False)
+   
+   def _autojoin_channels(self):
+      """Send JOINs for channels in self._chan_autojoin_pending"""
+      if not (self and self._autojoin_channels):
+         return
+      
+      try:
+         msgs = IRCMessage.build_ml_JOIN(None, self._chan_autojoin_pending.items())
+         for msg in msgs:
+            self.send_msg(msg)
+      finally:
+         self._chan_autojoin_pending.clear()
+   
    def process_input(self, line_data_mv):
       """Process IRC data"""
       # TODO: Move this up the callstack? It's kinda unclean to keep it here.
