@@ -184,6 +184,11 @@ class IRCPseudoServerConnection(AsyncLineStream):
          rv = b'*'
       return rv
    
+   def get_user_ia(self):
+      """Return dummy IRCAddress with our nick."""
+      rv = IRCAddress(b''.join((self.nick, b'!luteususer', b'@', self.self_name)))
+      return rv
+   
    def send_msg_num(self, num, *args):
       """Send numeric to peer"""
       cmd = '{0:03}'.format(num).encode('ascii')
@@ -246,6 +251,40 @@ class IRCPseudoServerConnection(AsyncLineStream):
          return False
       self.wanted_channels.remove(chann)
       return True
+   
+   def fake_part(self, chan):
+      self.send_msg(IRCMessage(self.get_user_ia(), b'PART', (chan,)))
+   
+   def fake_join(self, chan):
+      self.send_msg(IRCMessage(self.get_user_ia(), b'JOIN', (chan,)))
+   
+   def _process_msg_JOIN(self, msg):
+      """Process JOIN."""
+      chnns = msg.parse_JOIN()
+      if (chnns == 0):
+         for chan in self.wanted_channels:
+            self.fake_part(chan)
+         self.wanted_channels.clear()
+         return
+      
+      for chnn in chnns:
+         self.wc_add(chnn)
+
+   def _process_msg_PART(self, msg):
+      """Process PART."""
+      chnns = msg.parse_PART()
+      for chnn in chnns:
+         self.fake_part(chnn)
+         self.wc_remove(chnn)
+
+   def _process_msg_KICK(self, msg):
+      """Process KICK."""
+      kick_data = msg.parse_KICK()
+      for (chan, nick) in zip(chnns, nicks):
+         if (nick != self.nick):
+            continue
+         self.fake_part(chnn)
+         self.wc_remove(chnn)
    
    def _process_msg_PING(self, msg):
       """Answer PING."""

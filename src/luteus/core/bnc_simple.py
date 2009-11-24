@@ -39,7 +39,6 @@ class SimpleBNC:
    
    # *Outgoing* commands to mirror to other client connections
    mirror_cmds = set((b'PRIVMSG', b'NOTICE'))
-   mirror_postfix = b'!user@cruentus.bnc'
    
    BL_BASEDIR_DEFAULT = os.path.join(b'data', b'backlog')
    
@@ -153,7 +152,6 @@ class SimpleBNC:
       if not (msg.command in self.mirror_cmds):
          return
       msg2 = msg.copy()
-      msg2.prefix = (self.nick + self.mirror_postfix)
       msg2.src = self
       
       def chan_filter(chann):
@@ -163,10 +161,10 @@ class SimpleBNC:
          if (msg.src is ipsc):
             continue
          
-         if (not msg.get_chan_targets()):
-            msg_out = msg2
-         else:
-            msg_out = msg2.copy()
+         msg_out = msg2.copy()
+         msg_out.prefix = ipsc.get_user_ia()
+         
+         if (msg.get_chan_targets()):
             target_num = msg_out.filter_chan_targets(chan_filter)
             if (target_num < 1):
                continue
@@ -181,8 +179,7 @@ class SimpleBNC:
    
    def _fake_join(self, conn, chnn):
       chan = self.nc.conn.channels[chnn]
-      conn.send_msg(IRCMessage(conn.nick + self.mirror_postfix, b'JOIN',
-         (chnn,)))
+      conn.fake_join(chnn)
       
       for msg in chan.make_join_msgs(conn.nick, prefix=conn.self_name):
          conn.send_msg(msg)
