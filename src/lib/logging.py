@@ -21,7 +21,7 @@ import os
 import os.path
 import time
 
-from .s2c_structures import IA_NICK, IRCMessage
+from .s2c_structures import IRCMessage, IRCCIString
 
 
 class LogEntry:
@@ -147,6 +147,9 @@ class BLFormatter:
          targeted to orig_target with luteus name lname."""
       ctcps = []
       if (isinstance(e, LogLine)):
+         if not (e.msg.get_cmd_numeric() is None):
+            return []
+         
          msg_like = e.msg.command in (b'PRIVMSG', b'NOTICE')
          if not (msg_like):
             text = self.nmcl_prefix
@@ -252,14 +255,47 @@ class BacklogFile:
       self.f.close()
 
 
+class LogFilter:
+   def __init__(self):
+      self._eat_all_servers = False
+      self._eatable_sources = set()
+      self._eatable_nicks = set()
+   
+   def set_eat_servers(self, es):
+      self._eat_all_servers = es
+   
+   def add_filtered_source(self, s):
+      self._eatable_sources.add(IRCCIString(s))
+   
+   def add_filtered_nick(self, n):
+      self._eatable_nicks.add(IRCCIString(n))
+   
+   def __call__(self, ctx, r):
+      prefix = r.msg.prefix
+      if ((prefix is None) or (prefix.is_server())):
+         if (self._eat_all_servers and ()):
+            return False
+      else:
+         if (prefix.nick in self._eatable_nicks):
+            return False
+      
+      if (prefix in self._eatable_sources):
+         return False
+         
+      return True
+
+
 class _Logger:
    # cmds that don't go to a chan, but should be logged to the same context
    BC_AUXILIARY = (b'NICK', b'QUIT')
    logger = logging.getLogger('_Logger')
    log = logger.log
-   def __init__(self, basedir, nc):
+   def __init__(self, basedir, nc, filter=None):
+      if (filter is None):
+         filter = LogFilter()
       self.basedir = basedir
       self.nc = nc
+      self.filter = filter
       
       self._storage = {}
       
@@ -277,6 +313,9 @@ class _Logger:
       return rv
    
    def _put_record_file(self, ctx, r):
+      if not (self.filter(ctx, r)):
+         return
+      
       self._get_file(ctx).put_record(r)
    
    def _process_conn_shutdown(self):
@@ -306,7 +345,18 @@ class _Logger:
       msg2.src = None
       
       bll = ChanLogLine(msg2, src, outgoing)
-      (nicks, chans) = msg.get_targets()
+      num = msg.get_cmd_numeric()
+      
+      if (num is None):
+         (nicks, chans) = msg.get_targets()
+      else:
+         nicks = []
+         if (num in (332, 333, 366)):
+            chans = [msg.parameters[1]]
+         elif (num == 353):
+            chans = [msg.parameters[2]]
+         else:
+            chans = []
       
       if (chans):
          for chan in chans:
@@ -323,7 +373,7 @@ class _Logger:
       
       chan_map = self.nc.get_channels()
       chans = set(chan_map.keys())
-      if ((not (msg.prefix is None)) and (msg.prefix.type == IA_NICK)):
+      if ((not (msg.prefix is None)) and (msg.prefix.is_nick())):
          for chan in tuple(chans):
             if (msg.prefix.nick in chan_map[chan].users):
                continue

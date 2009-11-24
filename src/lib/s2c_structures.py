@@ -52,6 +52,11 @@ class IRCAddress(bytes):
       (user, hostmask) = rest.split(b'@',1)
       self.hostmask = hostmask
    
+   def is_server(self):
+      return (self.type == IA_SERVER)
+   def is_nick(self):
+      return (self.type == IA_NICK)
+   
    def target_get(self):
       """Return target bytes sequence"""
       if (self.type == IA_SERVER):

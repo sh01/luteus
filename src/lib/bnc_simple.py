@@ -225,10 +225,10 @@ class SimpleBNC:
       
       self.nc.conn.put_msg(msg, cb)
    
-   def attach_backlogger(self, basedir=BL_BASEDIR_DEFAULT):
+   def attach_backlogger(self, basedir=BL_BASEDIR_DEFAULT, filter=None):
       if not (self.bl is None):
          raise Exception('Backlogger attached already.')
-      self.bl = BackLogger(basedir, self.nc)
+      self.bl = BackLogger(basedir, self.nc, filter=filter)
    
    def take_ips_connection(self, conn):
       if (not conn):

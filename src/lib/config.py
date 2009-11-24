@@ -24,7 +24,7 @@ from .irc_ui import LuteusIRCUI
 
 
 class LuteusConfig:
-   from .logging import BLFormatter
+   from .logging import BLFormatter, LogFilter
    
    try:
       from ssl import CERT_OPTIONAL, CERT_REQUIRED, CERT_NONE
@@ -64,12 +64,13 @@ class LuteusConfig:
    def new_ssl_spec(self, *args, **kwargs):
       return SSLSpec(*args, **kwargs)
    
-   def new_bnc(self, *args, attach_ui=True, attach_bl=True, **kwargs):
+   def new_bnc(self, *args, attach_ui=True, attach_bl=True, filter=None,
+         **kwargs):
       rv = SimpleBNC(*args, **kwargs)
       if (attach_ui):
          iui = LuteusIRCUI(rv)
       if (attach_bl):
-         rv.attach_backlogger()
+         rv.attach_backlogger(filter=filter)
       return rv
    
    def attach_ps2bnc_default(self, ps, bnc):
