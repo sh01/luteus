@@ -41,7 +41,7 @@ class LogEntry:
       else:
          tt = time.gmtime(self.ts)
       
-      return time.strftime(fmt, tt).encode()
+      return time.strftime(fmt, tt)
 
    def get_replay_target(self, bl_context):
       return bl_context
@@ -262,7 +262,7 @@ class HRLogFile:
       self.time_fmt = time_fmt
    
    def format_record(self, r):
-      rv_l = [r.get_time_str(self.time_fmt, localtime=not self.gmtime), b' ']
+      rv_l = [r.get_time_str(self.time_fmt, localtime=not self.gmtime).encode('ascii'), b' ']
       if (isinstance(r, LogLine)):
          if (r.outgoing):
             rv_l.append(b'< ')
