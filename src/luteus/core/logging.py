@@ -21,7 +21,7 @@ import os
 import os.path
 import time
 
-from .s2c_structures import IRCMessage, IRCCIString
+from .s2c_structures import IRCMessage, IRCCIString, IRCAddress, IA_SERVER
 
 
 class LogEntry:
@@ -365,7 +365,11 @@ class _Logger:
    def _process_msg_in(self, msg):
       src = msg.prefix
       if (src is None):
-         src = self.nc.get_peer() or b'?'
+         src = self.nc.get_peer()
+         if (src is None):
+            src = b'?'
+         src = IRCAddress(src)
+         src.type = IA_SERVER
       
       self._process_msg(msg, src, False)
       
