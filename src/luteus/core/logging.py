@@ -310,17 +310,21 @@ class LogFilter:
          if (prefix.nick in self._eatable_nicks):
             return False
          if (r.outgoing and self._eat_all_ctcp_out):
-            (text, ctcp) = r.msg.split_ctcp()
-            if (ctcp):
+            (text, ctcps) = r.msg.split_ctcp()
+            if (ctcps):
                for tf in text:
                   if (tf):
                      break
                else:
-                  return False
+                  for ctcp in ctcps:
+                     if (ctcp.startswith(b'ACTION')):
+                        break
+                  else:
+                     return False
       
       if (prefix in self._eatable_sources):
          return False
-         
+      
       return True
 
 
