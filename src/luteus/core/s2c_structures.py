@@ -72,13 +72,12 @@ class IRCAddress(bytes):
       return (self.nick == other.nick)
    
 # Python 3.1 has a nasty bug which, among other things, prevents subclasses
-# of bytes of being pickled directly. We work around it here, using the same
-# method as bytearray.
+# of bytes of being pickled directly. We work around it here.
    def __reduce_ex__(self, proto):
       if (proto < 3):
          raise TypeError('No. You want at least version 3.')
       
-      return (type(self), (self.decode('latin-1'),'latin-1'), None, None, None)
+      return (type(self), (bytes(self),), None, None, None)
 
 
 class IRCCIString(bytes):
@@ -97,13 +96,24 @@ class IRCCIString(bytes):
          return False
       
       return (self.translate(self.LOWERMAP) == other.translate(self.LOWERMAP))
+   
    def __neq__(self, other):
       return not (self == other)
+   # FIXME: add ordering?
+   
    def __hash__(self):
       return bytes.__hash__(self.translate(self.LOWERMAP))
+   
    def normalize(self):
       return self.translate(self.LOWERMAP)
-   # FIXME: add ordering
+
+# Python 3.1 has a nasty bug which, among other things, prevents subclasses
+# of bytes of being pickled directly. We work around it here.
+   def __reduce_ex__(self, proto):
+      if (proto < 3):
+         raise TypeError('No. You want at least version 3.')
+      
+      return (type(self), (bytes(self),), None, None, None)
 
 
 class Mode:

@@ -18,8 +18,9 @@
 from gonium.service_aggregation import ServiceAggregate
 
 from .irc_network_client import IRCClientNetworkLink, IRCUserSpec, IRCServerSpec, SSLSpec
-from .irc_pseudoserver import IRCPseudoServer, DefaultAssocHandler
+from .irc_pseudoserver import IRCPseudoServer
 from .bnc_simple import SimpleBNC
+from .ipsc_association import NetUserAssocHandler
 from .irc_ui import LuteusIRCUI
 
 
@@ -40,6 +41,7 @@ class LuteusConfig:
       self._config_ns = {}
       
       self.log_formatter_default = self.LogFormatter()
+      self.assoc_handler = NetUserAssocHandler(self._sa.ed)
       
       for name in dir(self):
          if (name.startswith('_')):
@@ -76,7 +78,9 @@ class LuteusConfig:
       return IRCUserSpec(*args, **kwargs)
    
    def new_pseudo_server(self, *args, **kwargs):
-      return IRCPseudoServer(self._sa.ed, *args, **kwargs)
+      rv = IRCPseudoServer(self._sa.ed, *args, **kwargs)
+      self.assoc_handler.attach_ips(rv)
+      return rv
    
    def new_ssl_spec(self, *args, **kwargs):
       return SSLSpec(*args, **kwargs)
@@ -88,11 +92,6 @@ class LuteusConfig:
          iui = LuteusIRCUI(rv)
       if (attach_bl):
          rv.attach_backlogger(filter=filter)
-      return rv
-   
-   def attach_ps2bnc_default(self, ps, bnc):
-      rv = DefaultAssocHandler(self._sa.ed, bnc)
-      rv.attach_ips(ps)
       return rv
 
    def load_config_by_fn(self, fn):

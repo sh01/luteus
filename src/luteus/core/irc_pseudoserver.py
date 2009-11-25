@@ -27,42 +27,6 @@ class IRCPSStateError(Exception):
    pass
 
 
-class DefaultAssocHandler:
-   logger = logging.getLogger()
-   log = logger.log
-   
-   def __init__(self, ed, conn_mgr):
-      self.ed = ed
-      self.cc_timer = None
-      self.conn_mgr = conn_mgr
-      
-   def attach_ips(self, ips, priority=1024):
-      ips.em_in_msg.new_prio_listener(self.handle_msg)
-   
-   def check_conn(self, conn):
-      self.cc_timer = None
-      if not (conn.peer_registered()):
-         return
-      
-      try:
-         conn.take_connection(self.conn_mgr)
-      except IRCPSStateError:
-         return
-      try:
-         self.conn_mgr.take_ips_connection(conn)
-      except Exception as exc:
-         self.log(40, 'Failed to pass on connection {0}; closing it. Error:'
-            .format(conn), exc_info=True)
-         conn.mgr = None
-         conn.close()
-   
-   def handle_msg(self, conn, msg):
-      if not (self.cc_timer is None):
-         return
-      self.cc_timer = self.ed.set_timer(0, self.check_conn, args=(conn,),
-         interval_relative=False)
-      
-
 class IRCPseudoServer(AsyncSockServer):
    conn_timeout = 30
    def __init__(self, ed, *args, **kwargs):
