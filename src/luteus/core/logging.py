@@ -85,18 +85,29 @@ class LogConnShutdown(LogEntry):
 
 
 class _LogFormatter:
+   cmd_map = {b'ACTION': b'*'}
+   
    def __init__(self, time_fmt=None, time_color=None,
-         nmcl_color=None, utc=True):
+         nmcl_color=None, ctcp_color=None, utc=True):
       self.time_fmt = time_fmt
+      self.utc = utc
+      
       self.set_time_color(time_color)
       self.set_nomsg_channel_line_color(nmcl_color)
-      self.utc = utc
+      self.set_ctcp_color(ctcp_color)
    
+   # Color setters
    def set_time_color(self, c=None):
       if (c is None):
          self.time_cfmt = '{0}'
       else:
          self.time_cfmt = '\x03{0:02}{{0}}\x0f'.format(c)
+   
+   def set_ctcp_color(self, c=None):
+      if (c is None):
+         self.ctcp_prefix = b''
+      else:
+         self.ctcp_prefix = '\x03{0:02}'.format(c).encode('ascii')
    
    def set_nomsg_channel_line_color(self, c=None):
       if (c is None):
@@ -108,6 +119,10 @@ class _LogFormatter:
       return self.time_cfmt.format(e.get_time_str(self.time_fmt,
          utc=self.utc)).encode('ascii')
    
+   def map_cmd_out(self, cmd):
+      """Convert cmd string into output form."""
+      return self.cmd_map.get(cmd,cmd)
+   
    def format_line_prefix(self, e, cmd=None):
       src = e.src
       try:
@@ -118,23 +133,32 @@ class _LogFormatter:
       if (cmd is None):
          cmd = e.msg.command
       
+      is_msglike = (cmd in (b'PRIVMSG',b'NOTICE'))
+      
       if (isinstance(e, NickLogLine)):
          if (e.outgoing):
             rv =  b'<'
          else:
             rv = b'>'
-         if not (e.is_msglike()):
-            rv = b' '.join((cmd, rv))
+         if not (is_msglike):
+            rv = b' '.join((rv, self.map_cmd_out(cmd)))
          return rv
       
-      if (e.is_msglike()):
+      if (is_msglike):
          rv = b''.join((b'<', src, b'>'))
       else:
-         rv = b' '.join((cmd, src))
+         rv = b' '.join((src, self.map_cmd_out(cmd)))
       return rv
    
    def format_ctcp(self, e, ctcp_data):
-      return b' '.join((self.format_line_prefix(e, b'CTCP'), ctcp_data))
+      if (ctcp_data.startswith(b'ACTION ')):
+         cmd = b'ACTION'
+         lprefix = b''
+         ctcp_data = ctcp_data[7:]
+      else:
+         cmd = b'CTCP'
+         lprefix = self.ctcp_prefix
+      return b''.join((lprefix, self.format_line_prefix(e, cmd), b' ', ctcp_data))
    
    def format_entry(self, lname, orig_target, e):
       """Return list of formatted lines to given backlog entry originally
@@ -238,6 +262,7 @@ class LogFile:
    def __init__(self, fn):
       self.fn = fn
       self._open_file()
+      self._ts_last_use = time.time()
       
    def _open_file(self):
       f = _get_locked_file(self.fn)
@@ -253,6 +278,7 @@ class LogFile:
       text = self.format_record(r)
       self.f.write(text)
       self.f.flush()
+      self._ts_last_use = time.time()
 
 
 class BacklogFile(LogFile):
@@ -273,12 +299,14 @@ class BacklogFile(LogFile):
          rv.append(o)
       
       self.f.seek(0, 2)
+      self._ts_last_use = time.time()
       return rv
    
    def clear_records(self):
       self.f.seek(0)
       self.f.truncate(0)
       self.f.flush()
+      self._ts_last_use = time.time()
 
 
 class RawLogFile(LogFile):
@@ -367,6 +395,8 @@ class _Logger:
    BC_AUXILIARY = (b'NICK', b'QUIT')
    logger = logging.getLogger('_Logger')
    log = logger.log
+   maintenance_delay = 60
+   file_timeout = 60
    
    def __init__(self, basedir, nc, filter=None):
       if (filter is None):
@@ -377,9 +407,32 @@ class _Logger:
       
       self._storage = {}
       
+      self.maintenance_timer = None
+      
       self.nc.em_in_msg_bc.new_prio_listener(self._process_msg_in, -512)
       self.nc.em_out_msg.new_prio_listener(self._process_msg_out, -512)
       self.nc.em_shutdown.new_prio_listener(self._process_conn_shutdown, -512)
+   
+   def _do_maintenance(self):
+      now = time.time()
+      for (ctx,f) in tuple(self._storage.items()):
+         delta = now - f._ts_last_use
+         if (delta < 0):
+            self.log(30, 'File allegedly last accessed {0} seconds into the future; negative clock warp?'.format(-1*delta))
+         elif (delta < self.file_timeout):
+            continue
+         f.close()
+         del(self._storage[ctx])
+      
+      if not (self._storage):
+         self.maintenance_timer.cancel()
+         self.maintenance_timer = None
+   
+   def _shedule_maintenance(self):
+      if not (self.maintenance_timer is None):
+         return
+      self.maintenance_timer = self.nc.ed.set_timer(self.maintenance_delay,
+         self._do_maintenance, persist=True)
    
    def _get_file(self, chan):
       try:
@@ -387,6 +440,7 @@ class _Logger:
       except KeyError:
          rv = self.make_file(self._get_fn(chan))
          self._storage[chan] = rv
+         self._shedule_maintenance()
       
       return rv
    
