@@ -19,26 +19,31 @@ from collections import deque, ByteString
 
 from ..core.s2c_structures import IRCMessage
 
+
+def arg2msg(arg):
+   msg = arg
+   if (isinstance(msg, str)):
+      msg = msg.encode('latin-1')
+   if (isinstance(msg, ByteString)):
+      msg = IRCMessage.build_from_line(msg)
+   try:
+      msg.line_build()
+   except Exception as exc:
+      raise TypeError("Don't know what to do with {0!a}.".format(arg)) from exc
+   return msg
+
+
 class AutoLineSender:
    def __init__(self):
       self._msgs = deque()
       self._mm = deque()
    
    def handle_msg_cb(self, *args, **kwargs):
+      """Handle a query CB triggered by a msg sent by us."""
       pass
    
    def add_line(self, data):
-      msg = data
-      
-      if (isinstance(msg, str)):
-         msg = msg.encode('latin-1')
-      if (isinstance(data, ByteString)):
-         msg = IRCMessage.build_from_line(msg)
-      try:
-         msg.line_build()
-      except Exception as exc:
-         raise TypeError("Don't know what to do with {0!a}.".format(data)) from exc
-      
+      msg = arg2msg(data)
       self._msgs.append(msg)
    
    def add_line_maker(self, c):

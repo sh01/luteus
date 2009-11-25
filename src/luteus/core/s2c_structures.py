@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with luteus.  If not, see <http://www.gnu.org/licenses/>.
 
-from collections import deque
+from collections import deque, ByteString
 import logging
 
 from .event_multiplexing import OrderingEventMultiplexer
@@ -93,6 +93,9 @@ class IRCCIString(bytes):
    LOWERMAP = bytes(LOWERMAP)
    
    def __eq__(self, other):
+      if not (isinstance(other, ByteString)):
+         return False
+      
       return (self.translate(self.LOWERMAP) == other.translate(self.LOWERMAP))
    def __neq__(self, other):
       return not (self == other)

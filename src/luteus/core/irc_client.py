@@ -570,7 +570,7 @@ class IRCClientConnection(AsyncLineStream):
                   self.log(30, 'From {0}: bogus numeric: {1}'.format(
                      self.peer_address, msg))
                else:
-                  nick = msg.parameters[0]
+                  nick = IRCCIString(msg.parameters[0])
                   if (self.nick != nick):
                      if (not (self.nick is None)):
                         self.log(30, 'From {0}: missed a nickchange from {0} '
@@ -784,7 +784,7 @@ class IRCClientConnection(AsyncLineStream):
       
       self._pc_check(msg, 1)
       old_nick = msg.prefix.nick
-      new_nick = msg.parameters[0]
+      new_nick = IRCCIString(msg.parameters[0])
       
       if (old_nick == self.nick):
          self.log(20, 'Changed nick from {0} to {1}.'.format(old_nick, new_nick))

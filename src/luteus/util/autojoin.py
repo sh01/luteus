@@ -32,6 +32,4 @@ class AutoJoiner:
    def _process_link(self, nc):
       for (chan, key) in self.channels.items():
          nc.conn.add_autojoin_channel(chan, key)
-   
-   
 
