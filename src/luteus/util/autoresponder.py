@@ -93,6 +93,4 @@ class AutoResponder:
          msgs = reply_maker(nc, msg)
          for msg in msgs:
             nc.conn.put_msg(msg, self.handle_msg_cb)
-      
-
 
