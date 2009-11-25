@@ -291,7 +291,7 @@ class LogFilter:
       self._eat_all_servers = es
    
    def set_eat_all_ctcp_out(self, b):
-      self._eat_ctcp_out = b
+      self._eat_all_ctcp_out = b
    
    def add_filtered_source(self, s):
       self._eatable_sources.add(IRCCIString(s))
@@ -303,13 +303,8 @@ class LogFilter:
       if not (isinstance(r, LogLine)):
          return True
       prefix = r.msg.prefix
-      if ((prefix is None) or (prefix.is_server())):
-         if (self._eat_all_servers and ()):
-            return False
-      else:
-         if (prefix.nick in self._eatable_nicks):
-            return False
-         if (r.outgoing and self._eat_all_ctcp_out):
+      if (r.outgoing):
+         if (self._eat_all_ctcp_out):
             (text, ctcps) = r.msg.split_ctcp()
             if (ctcps):
                for tf in text:
@@ -321,6 +316,13 @@ class LogFilter:
                         break
                   else:
                      return False
+      else:
+         if ((prefix is None) or prefix.is_server()):
+            if (self._eat_all_servers):
+               return False
+         else:
+            if (prefix.nick in self._eatable_nicks):
+               return False
       
       if (prefix in self._eatable_sources):
          return False
