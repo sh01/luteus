@@ -266,6 +266,10 @@ class IRCClientNetworkLink:
       if not (self.conn is None):
          raise StateError('Connection attempt in progress already.')
       
+      if (self.timer_connect):
+         self.timer_connect.cancel()
+         self.timer_connect = None
+      
       nick_picker = self.us.make_nick_picker()
       nick = nick_picker()
       

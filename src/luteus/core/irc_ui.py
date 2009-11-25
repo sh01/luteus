@@ -30,13 +30,14 @@ class LuteusOP(OptionParser):
       self.file_t = TextIOWrapper(self.file_b)
       OptionParser.__init__(self, *args, **kwargs)
    
-   def exit(self, *args, **kwargs):
+   def exit(self, status, msg, *args, **kwargs):
+      f = self.file_t
+      f.write(msg)
+      f.flush()
       raise LuteusOPBailout()
    
    def _pick_file(self, file):
-      if (file is None):
-         file = self.file_t
-      return file
+      return self.file_t
    
    def print_usage(self, f=None):
       f = self._pick_file(f)
@@ -131,6 +132,7 @@ class LuteusIRCUI:
          
          op = LuteusOP(usage=usage)
          op.prog = val.cmd
+         op.set_description(val.desc)
          
          for arg in opt_names:
             (oa, okwa) = as_.annotations[arg]
@@ -190,14 +192,15 @@ class LuteusIRCUI:
      kwargs = dict(((key, _encode_if_str(v)) for (key, v) in opts.__dict__.items()))
      func(ctx, *args, **kwargs)
    
-   def rch(cmd):
+   def rch(cmd, description=None):
       """Helper: Register command handler func."""
       def d(c):
          c.cmd = cmd
+         c.desc = description
          return c
       return d
    
-   @rch("LPART")
+   @rch("LPART", "Stop monitoring channel on this client connection.")
    def _pc_connpart(self, ctx, chan):
       cc = ctx.cc
       if not (cc):
@@ -209,7 +212,25 @@ class LuteusIRCUI:
          ctx.cc.send_msg(IRCMessage(ctx.cc.get_unhmask(), b'PART', (chan,
             b'Luteus LPART-triggered fake part.')))
    
-   @rch("BLRESET")
+   @rch("BLREPLAY", "Force backlog replay for specified contexts.")
+   def _pc_blreplay(self, ctx, *chans,
+      nick:OS('-n', help="Replay nick backlog.", action='store_true')=False):
+      blcs = list(chans)
+      if (nick):
+         blcs.append(None)
+      
+      bl = self.bnc.bl
+      blf = self.bnc.blf
+      cc = ctx.cc
+      if not (bl):
+         return
+      
+      for blc in blcs:
+         msgs = blf.format_backlog(bl, cc.self_name, blc)
+         for msg in msgs:
+            cc.send_msg(msg)
+   
+   @rch("BLRESET", "Reset backlog for specified contexts.")
    def _pc_blreset(self, ctx, *chans,
       quiet:OS('-q', help="Don't confirm success.", action='store_true')=False,
       nicks:OS('-n', help="Reset nick backlog.", action='store_true')=False,
@@ -237,6 +258,14 @@ class LuteusIRCUI:
          chans.remove(None)
       
       ctx.output(b'Reset backlog for chans ' + b' '.join(chans) + b'.')
+   
+   @rch("JUMP", "Disconnect from currently linked server (if any), and attempt to reconnect to network.")
+   def _pc_jump(self, ctx):
+      conn = self.bnc.nc.conn
+      if (conn):
+         conn.close()
+      self.bnc.nc.conn_init()
+      
    
    del(rch)
    del(OS)
