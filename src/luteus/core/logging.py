@@ -42,7 +42,7 @@ class LogEntry:
          tt = time.gmtime(self.ts)
       
       return time.strftime(fmt, tt)
-
+   
    def get_replay_target(self, bl_context):
       return bl_context
    
@@ -51,11 +51,16 @@ class LogEntry:
 
 
 class LogLine(LogEntry):
+   msglike_cmds = set((b'PRIVMSG', b'NOTICE'))
    def __init__(self, msg, src, outgoing, ts=None):
       super().__init__(ts)
       self.msg = msg
       self.src = src
       self.outgoing = outgoing
+
+   def is_msglike(self):
+      """Return whether this entry is a NOTICE/PRIVMSG."""
+      return (self.msg.command in self.msglike_cmds)
 
 class ChanLogLine(LogLine):
    pass
@@ -115,11 +120,11 @@ class BLFormatter:
             rv =  b'<'
          else:
             rv = b'>'
-         if not (cmd in (b'PRIVMSG', b'NOTICE')):
+         if not (e.is_msglike()):
             rv = b' '.join((cmd, rv))
          return rv
       
-      if (cmd in (b'PRIVMSG', b'NOTICE')):
+      if (e.is_msglike()):
          rv = b''.join((b'<', src, b'>'))
       else:
          rv = b' '.join((cmd, src))
@@ -150,7 +155,7 @@ class BLFormatter:
          if not (e.msg.get_cmd_numeric() is None):
             return []
          
-         msg_like = e.msg.command in (b'PRIVMSG', b'NOTICE')
+         msg_like = e.is_msglike()
          if not (msg_like):
             text = self.nmcl_prefix
          else:
