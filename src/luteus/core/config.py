@@ -24,7 +24,8 @@ from .irc_ui import LuteusIRCUI
 
 
 class LuteusConfig:
-   from .logging import BLFormatter, LogFilter
+   from .logging import BLFormatter, LogFormatter, LogFilter, RawLogger, \
+      HRLogger
    
    try:
       from ssl import CERT_OPTIONAL, CERT_REQUIRED, CERT_NONE
@@ -37,13 +38,21 @@ class LuteusConfig:
       self._sa = sa
       self._icncs = []
       self._config_ns = {}
+      
+      self.log_formatter_default = self.LogFormatter()
+      
       for name in dir(self):
          if (name.startswith('_')):
             continue
          self._config_ns[name] = getattr(self, name)
       
-   def new_network(self, netname, user_spec, servers=[], log_dir=b'log',
-         *args, **kwargs):
+   def new_network(self, netname, user_spec, servers=[],
+         raw_log_dir=b'log/irc_raw', hr_log_dir=b'log/irc',
+         hr_log_formatter=None, *args, **kwargs):
+      
+      if (hr_log_formatter is None):
+         hr_log_formatter = self.log_formatter_default
+      
       rv = IRCClientNetworkLink(self._sa.ed, netname, user_spec, servers)
       
       def add_target(*sargs, **skwargs):
@@ -52,8 +61,10 @@ class LuteusConfig:
 
       rv.add_target = add_target
       
-      if not (log_dir is None):
-         rv.attach_new_logger(b'log')
+      if not (raw_log_dir is None):
+         self.RawLogger(basedir=raw_log_dir, nc=rv)
+      if not (hr_log_dir is None):
+         self.HRLogger(basedir=hr_log_dir, nc=rv, formatter=hr_log_formatter)
       
       self._icncs.append(rv)
       return rv

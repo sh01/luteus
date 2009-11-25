@@ -21,7 +21,8 @@ import os
 import os.path
 import time
 
-from .s2c_structures import IRCMessage, IRCCIString, IRCAddress, IA_SERVER
+from .s2c_structures import IRCMessage, IRCCIString, IRCAddress, IA_SERVER, \
+   IRCCIString
 
 
 class LogEntry:
@@ -32,11 +33,11 @@ class LogEntry:
          ts = time.time()
       self.ts = ts
    
-   def get_time_str(self, fmt=None, localtime=True):
+   def get_time_str(self, fmt=None, utc=True):
       if (fmt is None):
          fmt = self.TS_FMT_DEFAULT
       
-      if (localtime):
+      if (utc):
          tt = time.localtime(self.ts)
       else:
          tt = time.gmtime(self.ts)
@@ -83,12 +84,13 @@ class LogConnShutdown(LogEntry):
       return ("Bouncer disconnected from remote {0!a}.".format(self.peer_addr).encode('ascii'))
 
 
-class BLFormatter:
+class _LogFormatter:
    def __init__(self, time_fmt=None, time_color=None,
-         nmcl_color=None):
+         nmcl_color=None, utc=True):
       self.time_fmt = time_fmt
       self.set_time_color(time_color)
       self.set_nomsg_channel_line_color(nmcl_color)
+      self.utc = utc
    
    def set_time_color(self, c=None):
       if (c is None):
@@ -103,7 +105,8 @@ class BLFormatter:
          self.nmcl_prefix = '\x03{0:02}'.format(c).encode('ascii')
    
    def format_ts(self, e):
-      return self.time_cfmt.format(e.get_time_str(self.time_fmt)).encode('ascii')
+      return self.time_cfmt.format(e.get_time_str(self.time_fmt,
+         utc=self.utc)).encode('ascii')
    
    def format_line_prefix(self, e, cmd=None):
       src = e.src
@@ -133,22 +136,8 @@ class BLFormatter:
    def format_ctcp(self, e, ctcp_data):
       return b' '.join((self.format_line_prefix(e, b'CTCP'), ctcp_data))
    
-   def _make_msgs(self, prefix, chan, tpf, text):
-      msg1 = IRCMessage(prefix, b'PRIVMSG', [chan, b' '.join((tpf, text))])
-      rv = [msg1]
-      la = msg1.parameters[-1]
-      lost_chars = msg1.trim_last_arg()
-      
-      if (lost_chars):
-         text_cont = b' '.join((tpf, b'[cont.]', la[-1*lost_chars:]))
-         msg2 = IRCMessage(prefix, b'PRIVMSG', [chan, text_cont])
-         msg2.trim_last_arg()
-         rv.append(msg2)
-      
-      return rv
-   
    def format_entry(self, lname, orig_target, e):
-      """Return list of PRIVMSGs to replay given backlog entry originally
+      """Return list of formatted lines to given backlog entry originally
          targeted to orig_target with luteus name lname."""
       ctcps = []
       if (isinstance(e, LogLine)):
@@ -172,7 +161,7 @@ class BLFormatter:
             else:
                text += text_ext
          else:
-            text += self.nmcl_prefix + b' '.join(e.msg.get_notarget_parameters())
+            text += b' '.join([self.nmcl_prefix] + e.msg.get_notarget_parameters())
       else:
          text = e.get_text()
       
@@ -182,11 +171,11 @@ class BLFormatter:
       if (text is None):
          rv = []
       else:
-         rv = self._make_msgs(rs, rt, ts_str, text)
+         rv = self._make_lines(rs, rt, ts_str, text)
 
       for ctcp in ctcps:
          text = self.format_ctcp(e, ctcp)
-         rv.extend(self._make_msgs(rs, rt, ts_str, text))
+         rv.extend(self._make_lines(rs, rt, ts_str, text))
       
       return rv
    
@@ -198,6 +187,32 @@ class BLFormatter:
          rv.extend(self.format_entry(lname, orig_target, entry))
       
       return rv
+
+
+class BLFormatter(_LogFormatter):
+   def _make_lines(self, prefix, chan, tpf, text):
+      """Turn backlog entry into sequence of PRIVMSGs."""
+      msg1 = IRCMessage(prefix, b'PRIVMSG', [chan, b' '.join((tpf, text))])
+      rv = [msg1]
+      la = msg1.parameters[-1]
+      lost_chars = msg1.trim_last_arg()
+      
+      if (lost_chars):
+         text_cont = b' '.join((tpf, b'[cont.]', la[-1*lost_chars:]))
+         msg2 = IRCMessage(prefix, b'PRIVMSG', [chan, text_cont])
+         msg2.trim_last_arg()
+         rv.append(msg2)
+      
+      return rv
+
+
+class LogFormatter(_LogFormatter):
+   def _make_lines(self, prefix, chan, tpf, text):
+      """Turn log entry into log line."""
+      return [b' '.join((tpf, text)) + b'\n']
+
+   def format_entry(self, e):
+      return b''.join(super().format_entry(None, None, e))
 
 
 def _get_locked_file(fn):
@@ -219,7 +234,7 @@ def _get_locked_file(fn):
    return f
 
 
-class BacklogFile:
+class LogFile:
    def __init__(self, fn):
       self.fn = fn
       self._open_file()
@@ -230,7 +245,17 @@ class BacklogFile:
       self.f = f
       self.p = pickle.Pickler(f)
       self.u = pickle.Unpickler(f)
+   
+   def close(self):
+      self.f.close()
 
+   def put_record(self, r):
+      text = self.format_record(r)
+      self.f.write(text)
+      self.f.flush()
+
+
+class BacklogFile(LogFile):
    def put_record(self, o):
       self.p.dump(o)
       self.f.flush()
@@ -254,20 +279,18 @@ class BacklogFile:
       self.f.seek(0)
       self.f.truncate(0)
       self.f.flush()
-   
-   def close(self):
-      self.f.close()
 
 
-class HRLogFile:
-   def __init__(self, fn, gmtime=True, time_fmt=None):
+class RawLogFile(LogFile):
+   def __init__(self, fn, utc=True, time_fmt=None):
       self.fn = fn
       self.f = _get_locked_file(fn)
-      self.gmtime = gmtime
+      self.utc = utc
       self.time_fmt = time_fmt
+      super().__init__(fn)
    
    def format_record(self, r):
-      rv_l = [r.get_time_str(self.time_fmt, localtime=not self.gmtime).encode('ascii'), b' ']
+      rv_l = [r.get_time_str(self.time_fmt, utc=self.utc).encode('ascii'), b' ']
       if (isinstance(r, LogLine)):
          if (r.outgoing):
             rv_l.append(b'< ')
@@ -279,11 +302,15 @@ class HRLogFile:
       
       rv_l.append(b'\n')
       return b''.join(rv_l)
+
+class HRLogFile(LogFile):
+   def __init__(self, fn, formatter):
+      self.formatter=formatter
+      super().__init__(fn)
    
-   def put_record(self, r):
-      text = self.format_record(r)
-      self.f.write(text)
-      self.f.flush()
+   def format_record(self, r):
+      return self.formatter.format_entry(r)
+
 
 class LogFilter:
    def __init__(self):
@@ -340,6 +367,7 @@ class _Logger:
    BC_AUXILIARY = (b'NICK', b'QUIT')
    logger = logging.getLogger('_Logger')
    log = logger.log
+   
    def __init__(self, basedir, nc, filter=None):
       if (filter is None):
          filter = LogFilter()
@@ -406,9 +434,9 @@ class _Logger:
       else:
          nicks = []
          if (num in (332, 333, 366)):
-            chans = [msg.parameters[1]]
+            chans = [IRCCIString(msg.parameters[1])]
          elif (num == 353):
-            chans = [msg.parameters[2]]
+            chans = [IRCCIString(msg.parameters[2])]
          else:
             chans = []
       
@@ -449,16 +477,27 @@ class _Logger:
       else:
          ctx = ctx.normalize()
       return os.path.join(self.basedir, self.nc.netname.encode(), ctx)
-   
-   
-class HRLogger(_Logger):
-   def __init__(self, *args, gmtime=True, time_fmt=None, **kwargs):
-      self.gmtime = gmtime
+
+
+class RawLogger(_Logger):
+   def __init__(self, *args, utc=True, time_fmt=None, **kwargs):
+      self.utc = utc
       self.time_fmt = time_fmt
       super().__init__(*args, **kwargs)
    
    def make_file(self, fn):
-      return HRLogFile(fn, self.gmtime, self.time_fmt)
+      return RawLogFile(fn, self.utc, self.time_fmt)
+
+
+class HRLogger(_Logger):
+   def __init__(self, formatter, *args, **kwargs):
+      if (formatter is None):
+         raise Exception
+      self.formatter = formatter
+      super().__init__(*args, **kwargs)
+   
+   def make_file(self, fn):
+      return HRLogFile(fn, self.formatter)
 
 
 class BackLogger(_Logger):

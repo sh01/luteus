@@ -179,10 +179,6 @@ class IRCClientNetworkLink:
       self.netname = netname
       self.em_shutdown.new_prio_listener(self._process_conn_shutdown)
    
-   def attach_new_logger(self, basedir, *args, **kwargs):
-      """Instantiate new HRLogger and attach to this instance."""
-      HRLogger(basedir=basedir, nc=self, *args, **kwargs)
-   
    def is_linked(self):
       """Return whether we are linked to the network."""
       if (not self.conn):
