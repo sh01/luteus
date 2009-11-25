@@ -170,7 +170,7 @@ class LuteusIRCUI:
      try:
         (argc_min, argc_max, func, op) = self.ch[cmd]
      except KeyError:
-        ctx.output(b'Unknown command.')
+        ctx.output(b'Unknown command; you might want to try HELP.')
         return
      
      op.clear_output()
@@ -259,13 +259,22 @@ class LuteusIRCUI:
       
       ctx.output(b'Reset backlog for chans ' + b' '.join(chans) + b'.')
    
+   @rch("HELP", "Print luteus IRC interface help.")
+   def _pc_help(self, ctx):
+      for (cmd, data) in self.ch.items():
+         op = data[3]
+         ctx.output('--------- {0} ---------'.format(cmd).encode('latin-1'))
+         op.print_help()
+         op.output_lines(ctx.output)
+         ctx.output(b' ')
+      
+   
    @rch("JUMP", "Disconnect from currently linked server (if any), and attempt to reconnect to network.")
    def _pc_jump(self, ctx):
       conn = self.bnc.nc.conn
       if (conn):
          conn.close()
       self.bnc.nc.conn_init()
-      
    
    del(rch)
    del(OS)
