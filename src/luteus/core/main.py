@@ -181,6 +181,7 @@ def main():
       daemon_fork(pidfile=pid_file)
       import time
    
+   log(50, 'Initialization done; starting normal operation.')
    conf._start_connections()
    conf._event_loop()
 
