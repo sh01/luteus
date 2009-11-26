@@ -273,7 +273,11 @@ class LuteusIRCUI:
    
    @rch("HELP", "Print luteus IRC interface help.")
    def _pc_help(self, ctx):
-      for (cmd, data) in self.ch.items():
+      cmds = list(self.ch.keys())
+      cmds.sort()
+      
+      for cmd in cmds:
+         data = self.ch[cmd]
          op = data[3]
          ctx.output('--------- {0} ---------'.format(cmd).encode('latin-1'))
          op.print_help()
