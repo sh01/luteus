@@ -30,10 +30,11 @@ class LuteusOP(OptionParser):
       self.file_t = TextIOWrapper(self.file_b)
       OptionParser.__init__(self, *args, **kwargs)
    
-   def exit(self, status, msg, *args, **kwargs):
-      f = self.file_t
-      f.write(msg)
-      f.flush()
+   def exit(self, status=0, msg=None, *args, **kwargs):
+      if (msg):
+         f = self.file_t
+         f.write(msg)
+         f.flush()
       raise LuteusOPBailout()
    
    def _pick_file(self, file):
