@@ -295,6 +295,7 @@ class LuteusIRCUI:
    
    def _printchans(self, o, initial_indent='', subsequent_indent='', **kwargs):
       chans = list(self.bnc.nc.get_channels().keys())
+      chans.sort()
       o(b'Currently active chans:', initial_indent=initial_indent, **kwargs)
       o(b' '.join(chans), initial_indent=subsequent_indent,
          subsequent_indent=subsequent_indent, **kwargs)
