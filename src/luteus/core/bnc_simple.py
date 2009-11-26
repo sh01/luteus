@@ -184,6 +184,10 @@ class SimpleBNC:
       for msg in chan.make_join_msgs(conn.nick, prefix=conn.self_name):
          conn.send_msg(msg)
    
+      msgs = self.blf.format_backlog(self.bl, conn.self_name, chnn)
+      for msg in msgs:
+         conn.send_msg(msg)
+   
    def _process_client_msg(self, conn, msg):
       msg.eaten = False
       self.em_client_in_msg(conn, msg)
@@ -206,10 +210,9 @@ class SimpleBNC:
                if not (chnn in self.nc.conn.channels):
                   no_new = False
                   continue
+               if (chnn in conn.wanted_channels):
+                  continue
                self._fake_join(conn, chnn)
-               cc_msgs = self.blf.format_backlog(self.bl, conn.self_name, chnn)
-               for cc_msg in cc_msgs:
-                  conn.send_msg(cc_msg)
             if (no_new):
                return
       
@@ -234,7 +237,7 @@ class SimpleBNC:
          self._process_client_msg(conn, msg)
       
       conn.em_shutdown.new_prio_listener(process_shutdown)
-      conn.em_in_msg.new_prio_listener(process_msg)
+      conn.em_in_msg.new_prio_listener(process_msg, priority=-1024)
       self.ips_conns.add(conn)
       
       conn.send_msg_001()
