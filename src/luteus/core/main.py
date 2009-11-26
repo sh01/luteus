@@ -111,18 +111,22 @@ def ca_certs_update(conf, write_cas=False, clobber_out=False):
 def main():
    import optparse
    import os.path
+   import signal
    import sys
    
    from .config import LuteusConfig
    from gonium._debugging import streamlogger_setup
+   from gonium.pid_filing import PidFile
+   from gonium.daemon import daemon_fork
+   from gonium.posix.signal import SA_RESTART
    
-   streamlogger_setup()
    logger = logging.getLogger()
    log = logger.log
    
    op = optparse.OptionParser()
    op.add_option('--dir', default='~/.luteus', help='Directory to chdir to', metavar='DIR')
    op.add_option('--config', default='luteus.conf', help='Config file to use', metavar='FILE')
+   op.add_option('--debug', default=False, action='store_true', help="Don't fork, and log to stderr.")
    
    og_cc = optparse.OptionGroup(op, "Cert-retrieval mode")
    og_cc.add_option('--check-certs', dest='check_certs', action='store_true',
@@ -136,25 +140,46 @@ def main():
    
    (opts, args) = op.parse_args()
    
+   if (opts.debug or opts.check_certs):
+      streamlogger_setup()
+   
    tpath = os.path.expanduser(opts.dir)
    log(20, 'CDing to {0!a}.'.format(tpath))
    os.chdir(tpath)
-   conf_fn = opts.config
-   
-   conf = LuteusConfig()
-   log(20, 'Loading config from {0!a}.'.format(conf_fn))
    
    # Best to be paranoid for logs, etc.
    os.umask(0o77)
    
+   conf_fn = opts.config
+   conf = LuteusConfig()
+   log(20, 'Loading config from {0!a}.'.format(conf_fn))
    conf.load_config_by_fn(conf_fn)
 
-   
    if (opts.check_certs):
       log(20, 'Checking certs of SSL targets.')
       ca_certs_update(conf, opts.cc_wnc, opts.cc_clobber)
       log(20, 'All done.')
       return
+   
+   pid_file = PidFile()
+   pid_file.lock(True)
+   
+   sa = conf._sa
+   
+   sa.sc.sighandler_install(signal.SIGTERM, SA_RESTART)
+   sa.sc.sighandler_install(signal.SIGINT, SA_RESTART)
+   def handle_signals(si_l):
+      for si in si_l:
+         if ((si.signo == signal.SIGTERM) or (si.signo == signal.SIGINT)):
+            sa.ed.shutdown()
+            log(50, 'Shutting down on signal {0}.'.format(si.signo))
+            break
+
+   sa.sc.handle_signals.new_listener(handle_signals)
+   
+   if not (opts.debug):
+      daemon_fork(pidfile=pid_file)
+      import time
    
    conf._start_connections()
    conf._event_loop()
@@ -162,3 +187,4 @@ def main():
 
 if (__name__ == '__main__'):
    main()
+
