@@ -333,7 +333,7 @@ class LuteusIRCUI:
    def _pc_connstatus(self, ctx):
       o = ctx.output
       nc = self.bnc.nc
-      o('Network stats for {0!a}:'.format(nc.netname).encode())
+      o('Network status for {0!a}:'.format(nc.netname).encode())
       
       il = nc.is_linked()
       if (il):
