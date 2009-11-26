@@ -280,6 +280,7 @@ class LuteusIRCUI:
          data = self.ch[cmd]
          op = data[3]
          ctx.output('--------- {0} ---------'.format(cmd).encode('latin-1'))
+         op.clear_output()
          op.print_help()
          op.output_lines(ctx.output)
          ctx.output(b' ', width=None)
