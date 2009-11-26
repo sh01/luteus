@@ -86,7 +86,7 @@ def mmm_selfmode(modes):
 def mmm_selfinvite(chan):
    """Line maker maker for doing self-invites on connect."""
    c = chan
-   if (isinstance(m, str)):
+   if (isinstance(c, str)):
       c = c.encode()
    
    def mm_selfinvite(nc):
