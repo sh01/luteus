@@ -1,0 +1,36 @@
+== Meta ==
+This is the README file for luteus.
+
+== Purpose ==
+Luteus is an IRC bouncer, written with an eye towards features, flexibility,
+and extensibility.
+
+== Dependencies ==
+* a posix-like OS
+* Python 3.x
+* Gonium >= 0.6
+
+== Licensing ==
+All of luteus is licensed under the GNU GPL version 2 or later (your choice);
+see COPYING for the full license text.
+
+== Getting started ==
+The following instructions assume you have a python 3.x interpreter called
+'python3' in your path; if you don't, adjust them accordingly.
+
+Copy the provided ./examples/luteus.conf to ~/.luteus/luteus.conf, and edit
+it to your needs. Run luteus using 'python3 ./tools/luteus --debug', and see
+if it throws any errors.
+If not, connect to the address and port of one of the pseudoservers you
+configured, and authenticate to luteus with
+'PASS <network name>:<user name>:<password>'.
+
+Once connected, you can interrogate and control luteus over IRC; use
+   '/MSG luteus.bnc HELP'
+(replace 'luteus.bnc' with the server name you set for luteus if you
+ changed it from the default) to get an overview about the available
+commands.
+
+To make luteus fork into the background, simply run it without --debug. To
+install it locally, use the provided setup.py file;
+'python3 ./setup.py install --help' should get you started.
