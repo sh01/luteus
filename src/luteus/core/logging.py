@@ -294,7 +294,7 @@ class BacklogFile(LogFile):
       while (True):
          try:
             o = self.u.load()
-         except (UnpicklingError, EOFError):
+         except (UnpicklingError, EOFError, KeyError):
             break
          rv.append(o)
       
