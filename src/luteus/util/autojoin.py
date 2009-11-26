@@ -24,10 +24,10 @@ class AutoJoiner:
          chan = chan.encode()
       self.channels[chan] = key
    
-   def attach_nc(self, nc):
+   def attach_nc(self, nc, priority=1024):
       def cb():
          self._process_link(nc)
-      nc.em_link_finish.new_prio_listener(cb, 1024)
+      nc.em_link_finish.new_prio_listener(cb, priority)
    
    def _process_link(self, nc):
       for (chan, key) in self.channels.items():
