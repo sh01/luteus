@@ -207,9 +207,9 @@ class SimpleBNC:
                   no_new = False
                   continue
                self._fake_join(conn, chnn)
-               msgs = self.blf.format_backlog(self.bl, conn.self_name, chnn)
-               for msg in msgs:
-                  conn.send_msg(msg)
+               cc_msgs = self.blf.format_backlog(self.bl, conn.self_name, chnn)
+               for cc_msg in cc_msgs:
+                  conn.send_msg(cc_msg)
             if (no_new):
                return
       
