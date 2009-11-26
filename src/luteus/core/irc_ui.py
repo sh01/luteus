@@ -226,7 +226,8 @@ class LuteusIRCUI:
          return
       
       for blc in blcs:
-         msgs = blf.format_backlog(bl, cc.self_name, blc)
+         blc_ci = IRCCIString(blc)
+         msgs = blf.format_backlog(bl, cc.self_name, blc_ci)
          for msg in msgs:
             cc.send_msg(msg)
    
