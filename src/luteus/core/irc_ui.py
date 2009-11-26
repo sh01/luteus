@@ -16,6 +16,8 @@
 # along with luteus.  If not, see <http://www.gnu.org/licenses/>.
 
 import collections
+import textwrap
+import time
 from optparse import OptionParser, Option
 
 from .s2c_structures import *
@@ -62,7 +64,7 @@ class LuteusOP(OptionParser):
          return
       out_lines = out_val.strip(b'\n').split(b'\n')
       for line in out_lines:
-         output(line)
+         output(line, width=None)
    
    def clear_output(self):
       """Discard cached output."""
@@ -73,10 +75,18 @@ class LuteusUICtx:
       self.cc = cc #client connection
       self.bnc_name = bnc_name
    
-   def output(self, text):
-      msg = IRCMessage(self.bnc_name, b'PRIVMSG', (self.cc.get_unhmask(),
-         text))
-      self.cc.send_msg(msg)
+   def output(self, text, width=80, break_on_hyphens=False, **kwargs):
+      if not (width is None):
+         text_str = text.decode('latin-1')
+         lines = [l.encode('latin-1') for l in textwrap.wrap(text_str,
+            width=width, break_on_hyphens=break_on_hyphens, **kwargs)]
+      else:
+         lines = [text]
+      
+      for line in lines:
+         msg = IRCMessage(self.bnc_name, b'PRIVMSG', (self.cc.get_unhmask(),
+            line))
+         self.cc.send_msg(msg)
 
 
 def _decode_if_valid(s, encoding='ascii'):
@@ -268,9 +278,86 @@ class LuteusIRCUI:
          ctx.output('--------- {0} ---------'.format(cmd).encode('latin-1'))
          op.print_help()
          op.output_lines(ctx.output)
-         ctx.output(b' ')
+         ctx.output(b' ', width=None)
       
+   @rch("JAEC", "Join all chans currently tracked by the bouncer on this network.")
+   def _pc_jaec(self, ctx):
+      chans = self.bnc.nc.get_channels()
+      for chan in chans:
+         if (chan in ctx.cc.wanted_channels):
+            continue
+         self.bnc._fake_join(ctx.cc, chan)
+         ctx.cc.wanted_channels.add(chan)
    
+   def _printchans(self, o, initial_indent='', subsequent_indent='', **kwargs):
+      chans = list(self.bnc.nc.get_channels().keys())
+      o(b'Currently active chans:', initial_indent=initial_indent, **kwargs)
+      o(b' '.join(chans), initial_indent=subsequent_indent,
+         subsequent_indent=subsequent_indent, **kwargs)
+   
+   @rch("LISTCHANS", "List all channels currently tracked by the bouncer on this network.")
+   def _pc_listchans(self, ctx):
+      self._printchans(ctx.output, subsequent_indent='  ')
+   
+   def _format_ts_abs(self, ts, fmt='%Y-%m-%d %H:%M:%S', utc=False):
+      if (ts is None):
+         return 'Never'
+      
+      if (utc):
+         tt = time.gmtime(ts)
+      else:
+         tt = time.localtime(ts)
+      return time.strftime(fmt, tt)
+   
+   def _format_ts_rel(self, seconds):
+      from gonium.data_formatting import seconds_hr_relative
+      return seconds_hr_relative(seconds)
+   
+   def _format_ts_combined(self, ts, *args, **kwargs):
+      if (ts is None):
+         offset_str = 'undefined'
+      else:
+         offset_str = self._format_ts_rel(time.time() - ts)
+      
+      return '{0} ({1})'.format(self._format_ts_abs(ts, *args, **kwargs),
+         offset_str)
+   
+   def _format_addr(self, addr):
+      return '{0}:{1}'.format(addr[0], addr[1])
+   
+   @rch("CONNSTATUS", "Print status summary for this network.")
+   def _pc_connstatus(self, ctx):
+      o = ctx.output
+      nc = self.bnc.nc
+      o('Network stats for {0!a}:'.format(nc.netname).encode())
+      
+      il = nc.is_linked()
+      if (il):
+         css = '  Current status: Connected to {0} ({1!a}).'.format(
+            self._format_addr(nc.get_peer_address()), nc.get_peer()).encode()
+         csts = nc.ts_last_link
+      else:
+         css = b'  Current status: Disconnected.'
+         csts = nc.ts_last_unlink
+      
+      o(css)
+      ctstr = '  Since: {0}'.format(self._format_ts_combined(csts))
+      o(ctstr.encode())
+      
+      if (il):
+         o('  Current nick: {0!a}'.format(nc.get_self_nick()).encode())
+         self._printchans(o, initial_indent='  ', subsequent_indent='    ')
+      
+      o(b'  Clients currently connected to this bouncer:')
+      i = 1
+      for ipsc in self.bnc.ips_conns:
+         o('    {0}. {1}\t{2}'.format(
+            i, 
+            self._format_addr(ipsc.peer_address), 
+            self._format_ts_combined(ipsc.ts_init)
+         ).encode())
+         i += 1
+         
    @rch("JUMP", "Disconnect from currently linked server (if any), and attempt to reconnect to network.")
    def _pc_jump(self, ctx):
       conn = self.bnc.nc.conn

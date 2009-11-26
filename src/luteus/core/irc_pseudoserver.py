@@ -64,6 +64,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
    EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_out_msg', 'em_shutdown')
    def __init__(self, *args, ssts, self_name=b'luteus.bnc', **kwargs):
       AsyncLineStream.__init__(self, *args, lineseps={b'\n', b'\r'}, **kwargs)
+      self.ts_init = time.time()
       self.mgr = None
       self.ssts = ssts
       self.nick = None
@@ -73,7 +74,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
       self.wanted_channels = set()
       
       self.self_name = self_name
-      self.peer_address = self.fl.getpeername()[0]
+      self.peer_address = self.fl.getpeername()
       
       for name in self.EM_NAMES:
          self.em_new(name)
@@ -294,6 +295,6 @@ class IRCPseudoServerConnection(AsyncLineStream):
    
    def get_unhmask(self):
       return b''.join((self.nick, b'!', self.user, b'@',
-         self.peer_address.encode('ascii')))
+         self.peer_address[0].encode('ascii')))
       
       

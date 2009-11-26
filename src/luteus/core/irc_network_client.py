@@ -17,6 +17,7 @@
 
 import logging
 import socket
+import time
 from socket import AF_INET
 from collections import deque
 
@@ -178,6 +179,9 @@ class IRCClientNetworkLink:
       
       self.netname = netname
       self.em_shutdown.new_prio_listener(self._process_conn_shutdown)
+      
+      self.ts_last_link = None
+      self.ts_last_unlink = None
    
    def is_linked(self):
       """Return whether we are linked to the network."""
@@ -238,6 +242,7 @@ class IRCClientNetworkLink:
          self.log(40, 'Unexpected link finish on unknown connection {0!a}.'.format(conn))
          conn.close()
       self.log(20, 'Connection {0!a} finished link.'.format(conn))
+      self.ts_last_link = time.time()
 
    def _process_conn_shutdown(self):
       was_linked = self.conn.link_done
@@ -248,6 +253,7 @@ class IRCClientNetworkLink:
          self.timer_timeout = None
       if (was_linked):
          self.server_picker = self.make_server_picker()
+         self.ts_last_unlink = time.time()
    
    def shedule_conn_init(self):
       if not (self.timer_connect is None):
