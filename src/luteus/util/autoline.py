@@ -64,6 +64,7 @@ class AutoLineSender:
 
 
 def mmm_selfmode(modes):
+   """Line maker maker for setting umodes on connect."""
    m = modes
    if (isinstance(m, str)):
       m = m.encode()
@@ -81,3 +82,18 @@ def mmm_selfmode(modes):
    
    return mm_selfmode
 
+
+def mmm_selfinvite(chan):
+   """Line maker maker for doing self-invites on connect."""
+   c = chan
+   if (isinstance(m, str)):
+      c = c.encode()
+   
+   def mm_selfinvite(nc):
+      return IRCMessage(None, b'INVITE', [nc.conn.nick, c])
+   try:
+      IRCMessage(None, b'INVITE', [b'foo', c]).line_build()
+   except Exception as exc:
+      raise TypeError("Don't know what to do with {0!a}.".format(modes)) from exc
+   
+   return mm_selfinvite
