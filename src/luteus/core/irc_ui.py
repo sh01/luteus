@@ -354,7 +354,7 @@ class LuteusIRCUI:
          o('  Current nick: {0!a}'.format(nc.get_self_nick()).encode())
          self._printchans(o, initial_indent='  ', subsequent_indent='    ')
       
-      o(b'  Clients currently attched to this connection:')
+      o(b'  Clients currently attached to this connection:')
       i = 1
       for ipsc in self.bnc.ips_conns:
          o('    {0}. {1}\t{2}'.format(
