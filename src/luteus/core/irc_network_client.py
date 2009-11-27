@@ -174,8 +174,14 @@ class IRCClientNetworkLink:
       self.timer_timeout = None
       
       self.em_names = self.ircc_cls.EM_NAMES
+      em_pre_names = ['em_in_msg', 'em_in_msg_bc']
+      self.em_pre_names = [n for n in em_pre_names if n in self.em_names]
+      
       for em_name in self.em_names:
          self.em_new(em_name)
+      
+      for em_name in self.em_pre_names:
+         self.em_new(em_name + '_pre')
       
       self.netname = netname
       self.em_shutdown.new_prio_listener(self._process_conn_shutdown)
@@ -335,10 +341,16 @@ class IRCClientNetworkLink:
       
       self.conn = conn
       for emn in self.em_names:
-         sub_em = getattr(conn, emn)
-         sup_em = getattr(self, emn)
-         listener = sub_em.new_prio_listener(sup_em, 1024)
+         sup_em = getattr(conn, emn)
+         sub_em = getattr(self, emn)
+         listener = sup_em.new_prio_listener(sub_em, 1024)
          self.conn_els.append(listener)
+      
+      for emn in self.em_pre_names:
+         emn_p = emn + '_pre'
+         sup_em = getattr(conn, emn)
+         sub_em = getattr(self, emn_p)
+         listener = sup_em.new_prio_listener(sub_em, -512)
    
    def void_active_conn(self):
       self.conn = None

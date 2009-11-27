@@ -409,7 +409,7 @@ class _Logger:
       
       self.maintenance_timer = None
       
-      self.nc.em_in_msg_bc.new_prio_listener(self._process_msg_in, -512)
+      self.nc.em_in_msg_pre.new_prio_listener(self._process_msg_in, -512)
       self.nc.em_out_msg.new_prio_listener(self._process_msg_out, -512)
       self.nc.em_shutdown.new_prio_listener(self._process_conn_shutdown, -512)
    
@@ -512,18 +512,13 @@ class _Logger:
       
       if not (msg.command.upper() in self.BC_AUXILIARY):
          return
+
       # Log non-channel commands to chan contexts: NICK and QUIT
-      
       chan_map = self.nc.get_channels()
-      chans = set(chan_map.keys())
       if ((not (msg.prefix is None)) and (msg.prefix.is_nick())):
-         for chan in tuple(chans):
+         for chan in chan_map.keys():
             if (msg.prefix.nick in chan_map[chan].users):
-               continue
-            chans.remove(chan)
-      
-      for chan in chans:
-         self._put_record_file(chan, bll)
+               self._put_record_file(chan, bll)
       
    def _get_fn(self, ctx):
       if (ctx is None):
