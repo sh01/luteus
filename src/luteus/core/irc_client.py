@@ -635,7 +635,7 @@ class IRCClientConnection(AsyncLineStream):
       if (self.ping_fresh and not (self.pending_query is None)):
          self.log(40, 'Query {0} on {1} timed out; switching to emergency broadcasting. Accumulated data: {2}'
             .format(self.pending_query, self, self.pending_query.rv))
-         for msg in self.pending_query:
+         for msg in self.pending_query.rv:
             self.em_in_msg_bc(msg)
          
          self.pending_query.timeout()
