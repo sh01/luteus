@@ -59,6 +59,9 @@ __NUM_specs = (
    (407, 'ERR_TOOMANYTARGETS'),
    (409, 'ERR_NOORIGIN'),
    (421, 'ERR_UNKNOWNCOMMAND'),
+   
+   (422, 'ERR_NOMOTD'),
+   
    (431, 'ERR_NONICKNAMEGIVEN'),
    
    # pre-reg stuff

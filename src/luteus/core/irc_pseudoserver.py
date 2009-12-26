@@ -193,6 +193,9 @@ class IRCPseudoServerConnection(AsyncLineStream):
       for msg in msgs:
          self.send_msg(msg)
    
+   def send_msgs_motd(self):
+      self.send_msg_num(ERR_NOMOTD, b':MOTD not passed through by luteus.')
+   
    def send_msg_461(self, cmd):
       self.send_msg(IRCMessage(self.self_name, b'461',
          (self._get_nick(), cmd, b"Insufficient parameters.")))
