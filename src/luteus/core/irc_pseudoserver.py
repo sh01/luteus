@@ -22,6 +22,7 @@ from gonium.fdm.stream import AsyncLineStream, AsyncSockServer
 
 from .event_multiplexing import OrderingEventMultiplexer, EAT_ALL
 from .s2c_structures import *
+from .irc_num_constants import *
 
 class IRCPSStateError(Exception):
    pass
