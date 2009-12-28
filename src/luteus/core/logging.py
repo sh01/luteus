@@ -303,6 +303,7 @@ class BacklogFile(LogFile):
       return rv
    
    def clear_records(self):
+      import pickle
       self.f.seek(0)
       self.f.truncate(0)
       self.f.flush()
@@ -475,7 +476,28 @@ class _Logger:
       self._process_msg(msg, src, True)
    
    def _process_msg(self, msg, src, outgoing):
-      if (outgoing and not (msg.command in (b'PRIVMSG', b'NOTICE'))):
+      if (msg.command in (b'PRIVMSG', b'NOTICE')):
+         if ((len(msg.parameters) >= 2) and (not outgoing)):
+            text = msg.parameters[1]
+            (tf, ctcps) = msg.split_ctcp()
+         
+            for ctcp in ctcps:
+               if (not ctcp.startswith(b'ACTION')):
+                  ctcp_like = True
+                  break
+            else:
+               ctcp_like = False
+         
+            if (ctcp_like and (self.nc.conn.FC_IDENTIFY_CTCP & self.nc.conn.fc) or
+                ((not ctcp_like) and (self.nc.conn.FC_IDENTIFY_MSG & self.nc.conn.fc))):
+               if (text and (text[0] in b'+-')):
+                  msg_orig = msg
+                  msg = msg_orig.copy()
+                  msg.parameters[1] = text[1:]
+               else:
+                  self.log(40, "{0} got message {1} from {2}, which doesn't appear to have undergone freenet prefix mangling even though we expected it. This is ok for this message, but indicates a desync that will most likely lead to silent data corruption elsewhere. FIX THIS!".format(self, msg, self.nc))
+      
+      elif (outgoing):
          return
       
       msg2 = msg.copy()

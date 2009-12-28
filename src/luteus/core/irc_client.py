@@ -369,6 +369,10 @@ class IRCClientConnection(AsyncLineStream):
    timeout = 64
    maintenance_delay = 32
    conn_timeout = 30
+
+   # Freenode capabilities
+   FC_IDENTIFY_MSG = 1
+   FC_IDENTIFY_CTCP = 2
    
    EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_in_msg_bc', 'em_out_msg',
       'em_link_finish', 'em_shutdown', 'em_chmode', 'em_chan_join',
@@ -400,6 +404,8 @@ class IRCClientConnection(AsyncLineStream):
          username = username.encode('ascii')
       if (isinstance(realname, str)):
          realname = realname.encode('ascii')
+      
+      self.fc = 0 #freenode capability mask
       self.wnick = nick
       self.nick = None
       self.realname = realname
@@ -822,6 +828,18 @@ class IRCClientConnection(AsyncLineStream):
       """Process RPL_ISUPPORT message"""
       args = list(msg.parameters[1:])
       self.pcs.parse_msg(msg)
+   
+   def _process_msg_290(self, msg):
+      """Process freenode capability-verify MSG"""
+      if (len(msg.parameters) < 2):
+         return
+      
+      cp = msg.parameters[1]
+      
+      if (cp == b'IDENTIFY-MSG'):
+         self.fc |= self.FC_IDENTIFY_MSG
+      elif (cp == b'IDENTIFY-CTCP'):
+         self.fc |= self.FC_IDENTIFY_CTCP
    
    # MOTD
    def _process_msg_375(self, msg):
