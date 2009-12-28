@@ -229,18 +229,6 @@ class IRCPseudoServerConnection(AsyncLineStream):
    
    def fake_join(self, chan):
       self.send_msg(IRCMessage(self.get_user_ia(), b'JOIN', (chan,)))
-   
-   def _process_msg_JOIN(self, msg):
-      """Process JOIN."""
-      chnns = msg.parse_JOIN()
-      if (chnns == 0):
-         for chan in self.wanted_channels:
-            self.fake_part(chan)
-         self.wanted_channels.clear()
-         return
-      
-      for chnn in chnns:
-         self.wc_add(chnn)
 
    def _process_msg_PART(self, msg):
       """Process PART."""
