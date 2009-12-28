@@ -475,29 +475,35 @@ class _Logger:
       
       self._process_msg(msg, src, True)
    
-   def _process_msg(self, msg, src, outgoing):
-      if (msg.command in (b'PRIVMSG', b'NOTICE')):
-         if ((len(msg.parameters) >= 2) and (not outgoing)):
-            text = msg.parameters[1]
-            (tf, ctcps) = msg.split_ctcp()
-         
-            for ctcp in ctcps:
-               if (not ctcp.startswith(b'ACTION')):
-                  ctcp_like = True
-                  break
-            else:
-               ctcp_like = False
-         
-            if (ctcp_like and (self.nc.conn.FC_IDENTIFY_CTCP & self.nc.conn.fc) or
-                ((not ctcp_like) and (self.nc.conn.FC_IDENTIFY_MSG & self.nc.conn.fc))):
-               if (text and (text[0] in b'+-')):
-                  msg_orig = msg
-                  msg = msg_orig.copy()
-                  msg.parameters[1] = text[1:]
-               else:
-                  self.log(40, "{0} got message {1} from {2}, which doesn't appear to have undergone freenet prefix mangling even though we expected it. This is ok for this message, but indicates a desync that will most likely lead to silent data corruption elsewhere. FIX THIS!".format(self, msg, self.nc))
+   def _preprocess_in_msg(self, msg):
+      if (not (msg.command in (b'PRIVMSG', b'NOTICE'))):
+         return msg
+      if (len(msg.parameters) < 2):
+         return msg
       
-      elif (outgoing):
+      text = msg.parameters[1]
+      (tf, ctcps) = msg.split_ctcp()
+         
+      for ctcp in ctcps:
+         if (not ctcp.startswith(b'ACTION')):
+            ctcp_like = True
+            break
+      else:
+         ctcp_like = False
+         
+      if (ctcp_like and (self.nc.conn.FC_IDENTIFY_CTCP & self.nc.conn.fc) or
+         ((not ctcp_like) and (self.nc.conn.FC_IDENTIFY_MSG & self.nc.conn.fc))):
+         if (text and (text[0] in b'+-')):
+            msg = msg.copy()
+            msg.parameters[1] = text[1:]
+         else:
+            self.log(40, "{0} got message {1} from {2}, which doesn't appear to have undergone freenet prefix mangling even though we expected it. This is ok for this message, but indicates a desync that will most likely lead to silent data corruption elsewhere. FIX THIS!".format(self, msg, self.nc))
+      return msg
+
+   def _process_msg(self, msg, src, outgoing):
+      if (not outgoing):
+         msg = self._preprocess_in_msg(msg)
+      elif (not (msg.command in (b'PRIVMSG', b'NOTICE'))):
          return
       
       msg2 = msg.copy()
@@ -556,6 +562,9 @@ class RawLogger(_Logger):
       self.utc = utc
       self.time_fmt = time_fmt
       super().__init__(*args, **kwargs)
+   
+   def _preprocess_in_msg(self, msg):
+      return msg
    
    def make_file(self, fn):
       return RawLogFile(fn, self.utc, self.time_fmt)
