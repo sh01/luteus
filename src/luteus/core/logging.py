@@ -294,7 +294,7 @@ class BacklogFile(LogFile):
       while (True):
          try:
             o = self.u.load()
-         except (UnpicklingError, EOFError, KeyError):
+         except (EOFError,):
             break
          rv.append(o)
       
@@ -306,6 +306,7 @@ class BacklogFile(LogFile):
       self.f.seek(0)
       self.f.truncate(0)
       self.f.flush()
+      self.p = pickle.Pickler(self.f)
       self._ts_last_use = time.time()
 
 
