@@ -540,9 +540,7 @@ class IRCClientConnection(AsyncLineStream):
          pcs=self.pcs)
       msg.responded = False
       
-      if (self.em_in_msg(msg)):
-         return
-      
+      self.em_in_msg(msg)
       if not (msg.is_query_related):
          self.em_in_msg_bc(msg)
    

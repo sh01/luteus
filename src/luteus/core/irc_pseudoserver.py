@@ -20,7 +20,7 @@ import time
 
 from gonium.fdm.stream import AsyncLineStream, AsyncSockServer
 
-from .event_multiplexing import OrderingEventMultiplexer, EAT_ALL
+from .event_multiplexing import OrderingEventMultiplexer
 from .s2c_structures import *
 from .irc_num_constants import *
 

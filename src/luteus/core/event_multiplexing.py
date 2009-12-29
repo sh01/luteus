@@ -26,12 +26,6 @@ from gonium.event_multiplexing import EventMultiplexer, EventListener
 class _EventEaten(BaseException):
    pass
 
-class EAT_LISTENERS(_EventEaten):
-   pass
-
-class EAT_ALL(_EventEaten):
-   pass
-
 
 class ComparableCallable:
    def __init__(self, wrappee, priority):
@@ -94,14 +88,9 @@ class OrderingEventMultiplexer(EventMultiplexer):
       for listener in copy_(self.listeners):
          try:
             listener.callback(*args, **kwargs)
-         except EAT_LISTENERS:
-            return False
-         except EAT_ALL:
-            return True
          except BaseException as exc:
             self.log(40, '{0} caught exception in handler call '
                '{1}(*{2}, **{3}):'.format(self, listener.callback, args,
                kwargs), exc_info=True)
          
-      return False
 
