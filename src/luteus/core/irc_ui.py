@@ -288,6 +288,9 @@ class LuteusIRCUI:
    @rch("JAEC", "Join all chans currently tracked by the bouncer on this network.")
    def _pc_jaec(self, ctx):
       chans = self.bnc.nc.get_channels()
+      if (chans is None):
+         return
+      
       for chan in chans:
          if (chan in ctx.cc.wanted_channels):
             continue
