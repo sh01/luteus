@@ -97,7 +97,7 @@ class ChannelModeParser:
       for mode in self.smodes_opt:
          chan.modes[mode] = None
    
-   def set_chmodes(self, log, chan, modeargs):
+   def set_chmodes(self, pcs, log, chan, modeargs):
       if (len(modeargs) < 1):
          raise IRCProtocolError('Insufficient args for MODE')
       
@@ -133,7 +133,7 @@ class ChannelModeParser:
                   chan.modes[m].remove(modeargs[arg_i])
             elif (m in self.umodes2umodes):
                umode = self.umodes2umodes[m]
-               nick = IRCCIString(modeargs[arg_i])
+               nick = pcs.make_cib(modeargs[arg_i])
                if (set):
                   if (umode in chan.users[nick]):
                      raise IRCProtocolError("Attempting to set present umode")
@@ -293,7 +293,7 @@ class BlockQueryWHOIS(_BlockQuery):
       if (pc < 1):
          self.target = None
       else:
-         self.target = IRCAddress(self.msg.parameters[(pc > 1)])
+         self.target = msg.pcs.make_irc_addr(self.msg.parameters[(pc > 1)])
    
    def get_msg_barriers(self, msg):
       cmd_i = msg.get_cmd_numeric()
@@ -310,7 +310,7 @@ class BlockQueryWHOIS(_BlockQuery):
       
       if (len(msg.parameters) < 2):
          return (False, False)
-      target = IRCAddress(msg.parameters[1])
+      target = msg.pcs.make_irc_addr(msg.parameters[1])
       if (target != self.target):
          return (False, False)
       
@@ -332,7 +332,7 @@ class BlockQueryWHOWAS(BlockQueryWHOIS):
       if (pc < 1):
          self.target = None
       else:
-         self.target = IRCAddress(self.msg.parameters[0])
+         self.target = msg.pcs.make_irc_addr(self.msg.parameters[0])
 
 
 @_BlockQuery.reg_class
@@ -574,7 +574,7 @@ class IRCClientConnection(AsyncLineStream):
                   self.log(30, 'From {0}: bogus numeric: {1}'.format(
                      self.peer_address, msg))
                else:
-                  nick = IRCCIString(msg.parameters[0])
+                  nick = self.pcs.make_cib(msg.parameters[0])
                   if (self.nick != nick):
                      if (not (self.nick is None)):
                         self.log(30, 'From {0}: missed a nickchange from {0} '
@@ -686,7 +686,7 @@ class IRCClientConnection(AsyncLineStream):
          reason = None
       
       for chnn in chnns:
-         chnn = IRCCIString(chnn)
+         chnn = self.pcs.make_cib(chnn)
          if (not chnn in self.channels):
             raise IRCProtocolError("PART message for channel we aren't on.")
          chan = self.channels[chnn]
@@ -778,7 +778,7 @@ class IRCClientConnection(AsyncLineStream):
          raise IRCProtocolError("Got MODE message for channel {0} I'm not on."
             ''.format(victim)) from exc
       
-      self.chm_parser.set_chmodes(self.log, chan, msg.parameters[1:])
+      self.chm_parser.set_chmodes(self.pcs, self.log, chan, msg.parameters[1:])
       self.em_chmode(chan, msg.parameters)
    
    def _process_msg_NICK(self, msg):
@@ -788,7 +788,7 @@ class IRCClientConnection(AsyncLineStream):
       
       self._pc_check(msg, 1)
       old_nick = msg.prefix.nick
-      new_nick = IRCCIString(msg.parameters[0])
+      new_nick = self.pcs.make_cib(msg.parameters[0])
       
       if (old_nick == self.nick):
          self.log(20, 'Changed nick from {0} to {1}.'.format(old_nick, new_nick))
@@ -863,7 +863,7 @@ class IRCClientConnection(AsyncLineStream):
    
    # Channel-JOIN data dump messages
    def _get_own_chan(self, msg, chnn):
-      chnn = IRCCIString(chnn)
+      chnn = self.pcs.make_cib(chnn)
       try:
          rv = self.channels[bytes(chnn)]
       except KeyError as exc:
@@ -887,18 +887,28 @@ class IRCClientConnection(AsyncLineStream):
       """Process RPL_NAMREPLY message."""
       self._pc_check(msg, 4)
       chan = self._get_own_chan(msg, msg.parameters[2])
-      chan.users = {}
+      
+      if not (chan.syncing_names):
+         chan.syncing_names = True
+         chan.users = {}
+      
       for nick_str in msg.parameters[3].split():
          i = 0
          for c in nick_str:
             if (c in self.IRCNICK_INITCHARS):
                break
             i += 1
-         nick = IRCCIString(nick_str[i:])
+         nick = self.pcs.make_cib(nick_str[i:])
          
          chan.users[nick] = set()
          for b in b2b(nick_str[:i]):
             chan.users[nick].add(self.chm_parser.uflags2modes[b])
+   
+   def _process_msg_366(self, msg):
+      """Process RPL_ENDOFNAMES message."""
+      self._pc_check(msg, 2)
+      chan = self._get_own_chan(msg, msg.parameters[1])
+      chan.syncing_names = False
    
    # Things not impacting connection state
    def _process_msg_PRIVMSG(self, msg):

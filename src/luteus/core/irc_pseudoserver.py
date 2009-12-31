@@ -73,6 +73,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
       self.mode_str = None
       self.realname = None
       self.wanted_channels = set()
+      self.pcs = S2CProtocolCapabilitySet()
       
       self.self_name = self_name
       self.peer_address = self.fl.getpeername()
@@ -106,7 +107,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
          return
       if (line_data == b''):
          return
-      msg = IRCMessage.build_from_line(line_data, src=self)
+      msg = IRCMessage.build_from_line(line_data, src=self, pcs=self.pcs)
       if (self.em_in_msg(msg)):
          return
       
@@ -190,6 +191,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
          .encode('ascii'))
    
    def send_msgs_005(self, isupport_data):
+      self.pcs = isupport_data
       msgs = isupport_data.get_005_lines(self.nick, self.self_name)
       for msg in msgs:
          self.send_msg(msg)
@@ -210,7 +212,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
    
    def wc_add(self, chann):
       """Add channel name to wanted chan set"""
-      chann = IRCCIString(chann)
+      chann = self.bc.make_cib(chann)
       if (chann in self.wanted_channels):
          return False
       self.wanted_channels.add(chann)
@@ -218,7 +220,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
       
    def wc_remove(self, chann):
       """Remove channel name from wanted chan set"""
-      chann = IRCCIString(chann)
+      chann = self.bc.make_cib(chann)
       if not (chann in self.wanted_channels):
          return False
       self.wanted_channels.remove(chann)

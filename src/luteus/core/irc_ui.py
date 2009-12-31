@@ -237,7 +237,7 @@ class LuteusIRCUI:
          return
       
       for blc in blcs:
-         blc_ci = IRCCIString(blc)
+         blc_ci = ctx.cc.pcs.make_cib(blc)
          msgs = blf.format_backlog(bl, cc.self_name, blc_ci)
          for msg in msgs:
             cc.send_msg(msg)
@@ -253,7 +253,7 @@ class LuteusIRCUI:
          ctx.output(b'No backlogger active.')
          return
       
-      chans = set([IRCCIString(c) for c in chans])
+      chans = set([ctx.cc.pcs.make_cib(c) for c in chans])
       if (activechans):
          chans.update(ctx.cc.wanted_channels)
       
@@ -370,6 +370,15 @@ class LuteusIRCUI:
       if (conn):
          conn.close()
       self.bnc.nc.conn_init()
+   
+   @rch("DUMPCHANNICKS", "Dump chanlist for specific chan.")
+   def _pc_dumpchannicks(self, ctx, chan):
+      chn = self.bnc.nc.conn.channels[chan]
+      nicks = list(chn.users.keys())
+      nicks.sort()
+      ctx.output(ascii(len(nicks)).encode('ascii'))
+      text = ascii(nicks).encode('ascii')
+      ctx.output(text)
    
    del(rch)
    del(OS)

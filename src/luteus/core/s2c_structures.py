@@ -34,21 +34,21 @@ IA_SERVER = 0
 IA_NICK = 1
 
 class IRCAddress(bytes):
-   def __init__(self, *args, **kwargs):
+   def __init__(self, pcs):
       bytes.__init__(self)
       if not (b'!' in self):
          if (b'.' in self):
             self.type = IA_SERVER
          else:
             self.type = IA_NICK
-            self.nick = IRCCIString(self)
+            self.nick = pcs.make_cib(self)
             self.hostmask = None
             self.user = None
          return
       
       self.type = IA_NICK
       (nick, rest) = self.split(b'!',1)
-      self.nick = IRCCIString(nick)
+      self.nick = pcs.make_cib(nick)
       (user, hostmask) = rest.split(b'@',1)
       self.hostmask = hostmask
    
@@ -190,10 +190,19 @@ class S2CProtocolCapabilitySet(dict):
       except IndexError:
          return False
    
+   def make_cib(self, *args, **kwargs):
+      """Build and return case-insensitive bytes"""
+      return IRCCIString(*args, **kwargs)
+   
+   def make_irc_addr(self, *args, **kwargs):
+      """Build and return IRCAddress based on this PCS"""
+      return IRCAddress(self, *args, **kwargs)
+   
    def get_005_lines(self, nick, prefix=None):
       arglist = [self.get_argstring(name) for name in self]
       rv = IRCMessage.build_ml_args(b'005', (nick,),
-         (b'are supported by this server',), arglist, prefix=prefix)
+         (b'are supported by this server',), arglist, prefix=prefix,
+         pcs=self)
       return rv
 
    def __getstate__(self):
@@ -338,11 +347,11 @@ class IRCMessage:
          self.src, self.pcs)
       
    @classmethod
-   def build_from_line(cls, line, *args, **kwargs):
+   def build_from_line(cls, line, src, pcs):
       """Build instance from raw line"""
       line_split = bytes(line).split(b' ') # RFC 2812 says this is correct.
       if (line.startswith(b':')):
-         prefix = IRCAddress(line_split[0][1:])
+         prefix = pcs.make_irc_addr(line_split[0][1:])
          command = line_split[1]
          parameters = line_split[2:]
       else:
@@ -364,7 +373,7 @@ class IRCMessage:
          parameters[i] = b' '.join([parameters[i][1:]] + parameters[i+1:])
          del(parameters[i+1:])
          break
-      return cls(prefix, command, parameters, *args, **kwargs)
+      return cls(prefix, command, parameters, src=src, pcs=pcs)
    
    @classmethod
    def build_ml_args(cls, cmd, static_args_b, static_args_e, arg_list,
@@ -487,7 +496,7 @@ class IRCMessage:
          keys = ()
       
       for i in range(len(chnns)):
-         chnn = IRCCIString(chnns[i])
+         chnn = self.pcs.make_cib(chnns[i])
          if (i < len(keys)):
             key = keys[i]
          else:
@@ -500,8 +509,8 @@ class IRCMessage:
       if (len(self.parameters) < 2):
          raise IRCProtocolError(self)
       
-      chnns = [IRCCIString(b) for b in self.parameters[0].split(b',')]
-      nicks = [IRCCIString(b) for b in self.parameters[1].split(b',')]
+      chnns = [self.pcs.make_cib(b) for b in self.parameters[0].split(b',')]
+      nicks = [self.pcs.make_cib(b) for b in self.parameters[1].split(b',')]
       if (len(chnns) == 0):
          raise IRCProtocolError(self)
       
@@ -515,7 +524,7 @@ class IRCMessage:
    def parse_PART(self):
       if (len(self.parameters) < 1):
          raise IRCProtocolError(self)
-      return [IRCCIString(b) for b in self.parameters[0].split(b',')]
+      return [self.pcs.make_cib(b) for b in self.parameters[0].split(b',')]
    
    def get_targets(self):
       """Return a (nicks, chans) pair listing the nicks and chans this
@@ -530,11 +539,11 @@ class IRCMessage:
       nicks = []
       
       for t in self.parameters[0].split(b','):
-         cit = IRCCIString(t)
+         cit = self.pcs.make_cib(t)
          if (self.pcs.is_chann(t)):
-            chans.append(IRCCIString(cit))
+            chans.append(cit)
          else:
-            nicks.append(IRCCIString(cit))
+            nicks.append(cit)
       
       if not (cmd in self.nick_cmds):
          nicks = None
@@ -609,6 +618,7 @@ class IRCChannel:
       self.modes = modes
       self.expect_part = expect_part
       self.cmp = cmp_
+      self.syncing_names = False
    
    def get_uflag_strings(self):
       rv = []

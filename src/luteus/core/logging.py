@@ -21,8 +21,7 @@ import os
 import os.path
 import time
 
-from .s2c_structures import IRCMessage, IRCCIString, IRCAddress, IA_SERVER, \
-   IRCCIString
+from .s2c_structures import IRCMessage, IA_SERVER, IRCCIString
 
 
 class LogEntry:
@@ -463,7 +462,7 @@ class _Logger:
          src = self.nc.get_peer()
          if (src is None):
             src = b'?'
-         src = IRCAddress(src)
+         src = msg.pcs.make_irc_addr(src)
          src.type = IA_SERVER
       
       self._process_msg(msg, src, False)
@@ -517,9 +516,9 @@ class _Logger:
       else:
          nicks = []
          if (num in (332, 333, 366)):
-            chans = [IRCCIString(msg.parameters[1])]
+            chans = [msg.pcs.make_irc_cib(msg.parameters[1])]
          elif (num == 353):
-            chans = [IRCCIString(msg.parameters[2])]
+            chans = [msg.pcs.make_irc_cib(msg.parameters[2])]
          else:
             chans = []
       
@@ -534,9 +533,9 @@ class _Logger:
                self._put_record_file(nick, bll_nick)
          else:
             if (src.is_nick()):
-               bll_src = IRCCIString(src.nick)
+               bll_src = msg.pcs.make_irc_cib(src.nick)
             else:
-               bll_src = IRCCIString(src)
+               bll_src = msg.pcs.make_irc_cib(src)
             self._put_record_file(bll_src, bll_nick)
       
       if not (msg.command.upper() in self.BC_AUXILIARY):
