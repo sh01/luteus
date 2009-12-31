@@ -80,7 +80,7 @@ class IRCAddress(bytes):
       if (proto < 3):
          raise TypeError('No. You want at least version 3.')
       
-      return (type(self), (bytes(self),), None, None, None)
+      return (type(self), (self.pcs, bytes(self)), None, None, None)
 
 
 class IRCCIString(bytes):

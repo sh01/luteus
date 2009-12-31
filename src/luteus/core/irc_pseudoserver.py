@@ -212,7 +212,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
    
    def wc_add(self, chann):
       """Add channel name to wanted chan set"""
-      chann = self.bc.make_cib(chann)
+      chann = self.pcs.make_cib(chann)
       if (chann in self.wanted_channels):
          return False
       self.wanted_channels.add(chann)
@@ -220,7 +220,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
       
    def wc_remove(self, chann):
       """Remove channel name from wanted chan set"""
-      chann = self.bc.make_cib(chann)
+      chann = self.pcs.make_cib(chann)
       if not (chann in self.wanted_channels):
          return False
       self.wanted_channels.remove(chann)
