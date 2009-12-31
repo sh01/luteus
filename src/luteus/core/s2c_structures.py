@@ -572,6 +572,7 @@ class IRCMessage:
       
       targets_new = []
       for target in self.parameters[0].split(b','):
+         target = self.pcs.make_cib(target)
          if (self.pcs.is_chann(target) and not (filt(target))):
             continue
          targets_new.append(target)

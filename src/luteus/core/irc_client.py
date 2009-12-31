@@ -500,6 +500,7 @@ class IRCClientConnection(AsyncLineStream):
          
          If called several times for the same channel but with different keys,
          the key ultimately used on the join attempt is undefined."""
+      chan = self.pcs.make_cib(chan)
       try:
          nonew = (key == self._chan_autojoin_tried[chan])
       except KeyError:
