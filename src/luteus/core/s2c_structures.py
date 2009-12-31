@@ -54,6 +54,7 @@ class IRCAddress(bytes):
       self.nick = pcs.make_cib(nick)
       (user, hostmask) = rest.split(b'@',1)
       self.hostmask = hostmask
+      self._pcs = pcs
    
    def is_server(self):
       return (self.type == IA_SERVER)
@@ -80,7 +81,7 @@ class IRCAddress(bytes):
       if (proto < 3):
          raise TypeError('No. You want at least version 3.')
       
-      return (type(self), (self.pcs, bytes(self)), None, None, None)
+      return (type(self), (self._pcs, bytes(self)), None, None, None)
 
 
 class IRCCIString(bytes):
