@@ -39,6 +39,8 @@ class IRCAddress(bytes):
    
    def __init__(self, pcs, *args, **kwargs):
       bytes.__init__(self)
+      self._pcs = pcs
+      
       if not (b'!' in self):
          if (b'.' in self):
             self.type = IA_SERVER
@@ -54,7 +56,6 @@ class IRCAddress(bytes):
       self.nick = pcs.make_cib(nick)
       (user, hostmask) = rest.split(b'@',1)
       self.hostmask = hostmask
-      self._pcs = pcs
    
    def is_server(self):
       return (self.type == IA_SERVER)
