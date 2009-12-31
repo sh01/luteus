@@ -87,30 +87,39 @@ class IRCAddress(bytes):
 
 class IRCCIString(bytes):
    """Case-insensitive (as defined by RFC2821) string"""
-   LOWERMAP = bytearray(range(256))
+   LM_ASCII = bytearray(range(256))
    for i in range(ord(b'A'), ord(b'Z')+1):
-      LOWERMAP[i] = ord(chr(i).lower())
-   LOWERMAP[ord(b'[')] = ord(b'{')
-   LOWERMAP[ord(b']')] = ord(b'}')
-   LOWERMAP[ord(b'\\')] = ord(b'|')
-   LOWERMAP[ord(b'~')] = ord(b'^')
-   LOWERMAP = bytes(LOWERMAP)
+      LM_ASCII[i] = ord(chr(i).lower())
+   LM_ASCII = bytes(LM_ASCII)
+   
+   LM_RFC1459 = bytearray(LM_ASCII)
+   LM_RFC1459[ord(b'[')] = ord(b'{')
+   LM_RFC1459[ord(b']')] = ord(b'}')
+   LM_RFC1459[ord(b'\\')] = ord(b'|')
+   LM_RFC1459 = bytes(LM_RFC1459)
+   
+   LM_RFC2812 = bytearray(LM_RFC1459)
+   LM_RFC2812[ord(b'~')] = ord(b'^')
+   LM_RFC2812 = bytes(RFC2812)
+   
+   # default
+   lowermap = LM_RFC2812
    
    def __eq__(self, other):
       if not (isinstance(other, ByteString)):
          return False
       
-      return (self.translate(self.LOWERMAP) == other.translate(self.LOWERMAP))
+      return (self.translate(self.lowermap) == other.translate(self.lowermap))
    
    def __neq__(self, other):
       return not (self == other)
    # FIXME: add ordering?
    
    def __hash__(self):
-      return bytes.__hash__(self.translate(self.LOWERMAP))
+      return bytes.__hash__(self.translate(self.lowermap))
    
    def normalize(self):
-      return self.translate(self.LOWERMAP)
+      return self.translate(self.lowermap)
 
 # Python 3.1 has a nasty bug which, among other things, prevents subclasses
 # of bytes of being pickled directly. We work around it here.
@@ -146,9 +155,29 @@ class Mode:
 
 class S2CProtocolCapabilitySet(dict):
    """S2C protocol capability set, as communicated by ISUPPORT msgs"""
+   logger = logging.getLogger('S2CProtocolCapabilitySet')
+   log = logger.log
+   
    def __init__(self, *args, **kwargs):
       dict.__init__(self, *args, **kwargs)
       self.em_argchange = OrderingEventMultiplexer(self)
+      self._lowermap = bytearray(IRCCIString.lowermap)
+      self.em_argchange.new_prio_listener(self._set_lmap, 0)
+   
+   def _set_lmap(self):
+      cm = self[b'CASEMAPPING']
+      if (cm == b'strict-rfc1459'):
+         self._lowermap[:] = IRCCIString.LM_RFC1459
+      elif (cm == b'rfc1459'):
+         # This is a horrible misnomer, but that's what
+         # draft-brocklesby-irc-isupport-03.txt says this means.
+         self._lowermap[:] = IRCCIString.LM_RFC2812
+      elif (cm == b'ascii'):
+         self._lowermap[:] = IRCCIString.LM_ASCII
+      else:
+         self.log(35, 'Unable to process CASEMAPPING value {0!a}'.format(cm))
+      
+      self.log(20, '{0!a} implementing CASEMAPPING {1!a}.'.format(self, cm))
    
    def parse_msg(self, msg):
       args = list(msg.parameters[1:])
@@ -197,7 +226,9 @@ class S2CProtocolCapabilitySet(dict):
    
    def make_cib(self, *args, **kwargs):
       """Build and return case-insensitive bytes"""
-      return IRCCIString(*args, **kwargs)
+      rv = IRCCIString(*args, **kwargs)
+      rv.lowermap = self._lowermap
+      return rv
    
    def make_irc_addr(self, *args, **kwargs):
       """Build and return IRCAddress based on this PCS"""
