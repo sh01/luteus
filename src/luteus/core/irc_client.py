@@ -798,8 +798,12 @@ class IRCClientConnection(AsyncLineStream):
       for chan in self.channels.values():
          if not (old_nick in chan.users):
             continue
-         chan.users[new_nick] = chan.users[old_nick]
+         
+         user_data = chan.users[old_nick]
          del(chan.users[old_nick])
+         if (new_nick in chan.users):
+            self.log(35, 'Apparent nickchange collision: {0!a} changed nick to {1!a} on {2!a} on {3!a}. Overwriting.'.format(old_nick, new_nick, chan, self.peer_address))
+         chan.users[new_nick] = user_data
    
    # connect numerics
    def _process_msg_001(self, msg):
