@@ -204,8 +204,7 @@ class S2CProtocolCapabilitySet(dict):
    def get_005_lines(self, nick, prefix=None):
       arglist = [self.get_argstring(name) for name in self]
       rv = IRCMessage.build_ml_args(b'005', (nick,),
-         (b'are supported by this server',), arglist, prefix=prefix,
-         pcs=self)
+         (b'are supported by this server',), arglist, prefix=prefix)
       return rv
 
    def __getstate__(self):
