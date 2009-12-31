@@ -368,7 +368,7 @@ class IRCClientNetworkLink:
 
 
 def _selftest(targethost, tport, username='chimera', realname=b'? ? ?',
-      ssl=False):
+      ssl=None):
    import pprint
    from gonium.fdm import ED_get
    from gonium._debugging import streamlogger_setup
@@ -402,10 +402,10 @@ def _selftest(targethost, tport, username='chimera', realname=b'? ? ?',
 if (__name__ == '__main__'):
    import sys
    if (b'--ssl' in sys.argv):
-      ssl = True
+      ssl = SSLSpec()
       tport = 6697
    else:
-      ssl = False
+      ssl = None
       tport = 6667
    
    _selftest(sys.argv[1], tport, ssl=ssl)
