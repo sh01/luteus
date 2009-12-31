@@ -69,7 +69,7 @@ class AutoResponder:
       nick_map_ = {}
       codec = 'latin-1'
       for (nick, val) in nick_map.items():
-         IRCMessage.build_from_line(pattern.format(nick=nick.decode(codec), tok=val).encode(codec)).line_build()
+         IRCMessage.build_from_line(pattern.format(nick=nick.decode(codec), tok=val).encode(codec), src=self, pcs=None).line_build()
          nick_map_[IRCCIString(nick)] = val
       
       def make_reply(nc, msg):
@@ -77,7 +77,7 @@ class AutoResponder:
          if not (nick in nick_map_):
             return ()
          tok = nick_map_[nick]
-         return (IRCMessage.build_from_line(pattern.format(nick=nick.decode(codec), tok=tok).encode(codec)),)
+         return (IRCMessage.build_from_line(pattern.format(nick=nick.decode(codec), tok=tok, src=self, pcs=None).encode(codec)),)
       
       del(nick_map)
       return self.add_autoresponse_func(cmd, line_re, make_reply)

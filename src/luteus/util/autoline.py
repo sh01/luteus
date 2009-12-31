@@ -25,7 +25,7 @@ def arg2msg(arg):
    if (isinstance(msg, str)):
       msg = msg.encode('latin-1')
    if (isinstance(msg, ByteString)):
-      msg = IRCMessage.build_from_line(msg)
+      msg = IRCMessage.build_from_line(msg, src=arg2msg, pcs=None)
    try:
       msg.line_build()
    except Exception as exc:
