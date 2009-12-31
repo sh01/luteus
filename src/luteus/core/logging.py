@@ -516,9 +516,9 @@ class _Logger:
       else:
          nicks = []
          if (num in (332, 333, 366)):
-            chans = [msg.pcs.make_irc_cib(msg.parameters[1])]
+            chans = [msg.pcs.make_cib(msg.parameters[1])]
          elif (num == 353):
-            chans = [msg.pcs.make_irc_cib(msg.parameters[2])]
+            chans = [msg.pcs.make_cib(msg.parameters[2])]
          else:
             chans = []
       
@@ -533,9 +533,9 @@ class _Logger:
                self._put_record_file(nick, bll_nick)
          else:
             if (src.is_nick()):
-               bll_src = msg.pcs.make_irc_cib(src.nick)
+               bll_src = msg.pcs.make_cib(src.nick)
             else:
-               bll_src = msg.pcs.make_irc_cib(src)
+               bll_src = msg.pcs.make_cib(src)
             self._put_record_file(bll_src, bll_nick)
       
       if not (msg.command.upper() in self.BC_AUXILIARY):
