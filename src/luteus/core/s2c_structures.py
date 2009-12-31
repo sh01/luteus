@@ -100,7 +100,7 @@ class IRCCIString(bytes):
    
    LM_RFC2812 = bytearray(LM_RFC1459)
    LM_RFC2812[ord(b'~')] = ord(b'^')
-   LM_RFC2812 = bytes(RFC2812)
+   LM_RFC2812 = bytes(LM_RFC2812)
    
    # default
    lowermap = LM_RFC2812
