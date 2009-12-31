@@ -267,7 +267,7 @@ class IRCClientNetworkLink:
          return
       
       msg = IRCMessage(None, b'QUIT', (reason,), src=self, pcs=self.conn.pcs)
-      self.conn.put_msg(msg)
+      self.conn.send_msg(msg)
    
    def shedule_conn_init(self):
       if not (self.timer_connect is None):
