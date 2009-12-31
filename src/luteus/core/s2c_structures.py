@@ -164,8 +164,10 @@ class S2CProtocolCapabilitySet(dict):
       self._lowermap = bytearray(IRCCIString.lowermap)
       self.em_argchange.new_prio_listener(self._set_lmap, 0)
    
-   def _set_lmap(self):
-      cm = self[b'CASEMAPPING']
+   def _set_lmap(self, name, cm):
+      if (cm != b'CASEMAPPING'):
+         return
+      
       if (cm == b'strict-rfc1459'):
          self._lowermap[:] = IRCCIString.LM_RFC1459
       elif (cm == b'rfc1459'):
