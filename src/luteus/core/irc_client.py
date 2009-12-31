@@ -866,7 +866,7 @@ class IRCClientConnection(AsyncLineStream):
    def _get_own_chan(self, msg, chnn):
       chnn = self.pcs.make_cib(chnn)
       try:
-         rv = self.channels[bytes(chnn)]
+         rv = self.channels[chnn]
       except KeyError as exc:
          raise IRCProtocolError(msg, "Not on chan {0!a}.".format(chnn)) from exc
       
