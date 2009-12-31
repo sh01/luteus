@@ -34,7 +34,10 @@ IA_SERVER = 0
 IA_NICK = 1
 
 class IRCAddress(bytes):
-   def __init__(self, pcs):
+   def __new__(t, pcs, *args, **kwargs):
+      return bytes.__new__(t, *args, **kwargs)
+   
+   def __init__(self, pcs, *args, **kwargs):
       bytes.__init__(self)
       if not (b'!' in self):
          if (b'.' in self):

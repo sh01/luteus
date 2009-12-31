@@ -156,7 +156,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
    
    def get_user_ia(self):
       """Return dummy IRCAddress with our nick."""
-      rv = IRCAddress(b''.join((self.nick, b'!luteususer', b'@', self.self_name)))
+      rv = IRCAddress(self.pcs, b''.join((self.nick, b'!luteususer', b'@', self.self_name)))
       return rv
    
    def send_msg_num(self, num, *args):
