@@ -77,7 +77,7 @@ class AutoResponder:
          if not (nick in nick_map_):
             return ()
          tok = nick_map_[nick]
-         return (IRCMessage.build_from_line(pattern.format(nick=nick.decode(codec), tok=tok, src=self, pcs=None).encode(codec)),)
+         return (IRCMessage.build_from_line(pattern.format(nick=nick.decode(codec), tok=tok).encode(codec), src=self, pcs=None),)
       
       del(nick_map)
       return self.add_autoresponse_func(cmd, line_re, make_reply)
