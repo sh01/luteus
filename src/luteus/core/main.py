@@ -172,7 +172,10 @@ def main():
       for si in si_l:
          if ((si.signo == signal.SIGTERM) or (si.signo == signal.SIGINT)):
             sa.ed.shutdown()
-            log(50, 'Shutting down on signal {0}.'.format(si.signo))
+            quit_msg = 'Shutting down on signal {0!a}.'.format(si.signo)
+            log(50, quit_msg)
+            for nc in conf._icncs:
+               nc.send_quit(quit_msg.encode('ascii'))
             break
 
    sa.sc.handle_signals.new_listener(handle_signals)
