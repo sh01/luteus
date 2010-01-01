@@ -401,7 +401,7 @@ def _selftest(targethost, tport, username='chimera', realname=b'? ? ?',
 
 if (__name__ == '__main__'):
    import sys
-   if (b'--ssl' in sys.argv):
+   if ('--ssl' in sys.argv):
       ssl = SSLSpec()
       tport = 6697
    else:
