@@ -165,7 +165,7 @@ class S2CProtocolCapabilitySet(dict):
       self.em_argchange.new_prio_listener(self._set_lmap, 0)
    
    def _set_lmap(self, name, cm):
-      if (cm != b'CASEMAPPING'):
+      if (name != b'CASEMAPPING'):
          return
       
       if (cm == b'strict-rfc1459'):
@@ -179,7 +179,7 @@ class S2CProtocolCapabilitySet(dict):
       else:
          self.log(35, 'Unable to process CASEMAPPING value {0!a}'.format(cm))
       
-      self.log(20, '{0!a} implementing CASEMAPPING {1!a}.'.format(self, cm))
+      self.log(20, 'Implementing CASEMAPPING {1!a}.'.format(self, cm))
    
    def parse_msg(self, msg):
       args = list(msg.parameters[1:])
