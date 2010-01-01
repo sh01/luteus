@@ -66,10 +66,13 @@ class AutoResponder:
    
    def add_autoresponse_by_nick(self, cmd, line_re, pattern, nick_map):
       """Add nick-specific autoresponse."""
+      from collections import ByteString
       nick_map_ = {}
-      codec = 'latin-1'
+      code_args = ('utf-8', 'surrogateescape')
       for (nick, val) in nick_map.items():
-         IRCMessage.build_from_line(pattern.format(nick=nick.decode(codec), tok=val).encode(codec), src=self, pcs=None).line_build()
+         if (isinstance(val, ByteString)):
+            val = val.decode(*code_args)
+         IRCMessage.build_from_line(pattern.format(nick=nick.decode(*code_args), tok=val).encode(*code_args), src=self, pcs=None).line_build()
          nick_map_[IRCCIString(nick)] = val
       
       def make_reply(nc, msg):
@@ -77,7 +80,7 @@ class AutoResponder:
          if not (nick in nick_map_):
             return ()
          tok = nick_map_[nick]
-         return (IRCMessage.build_from_line(pattern.format(nick=nick.decode(codec), tok=tok).encode(codec), src=self, pcs=None),)
+         return (IRCMessage.build_from_line(pattern.format(nick=nick.decode(*code_args), tok=tok).encode(*code_args), src=self, pcs=None),)
       
       del(nick_map)
       return self.add_autoresponse_func(cmd, line_re, make_reply)
