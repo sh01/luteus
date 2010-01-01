@@ -163,6 +163,9 @@ class S2CProtocolCapabilitySet(dict):
       self.em_argchange = OrderingEventMultiplexer(self)
       self._lowermap = bytearray(IRCCIString.lowermap)
       self.em_argchange.new_prio_listener(self._set_lmap, 0)
+      
+      if (b'CASEMAPPING' in self):
+         self._set_lmap(b'CASEMAPPING', self[b'CASEMAPPING'])
    
    def _set_lmap(self, name, cm):
       if (name != b'CASEMAPPING'):
