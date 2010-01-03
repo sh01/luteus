@@ -105,7 +105,7 @@ _OptSpec = collections.namedtuple('OptSpec', ('args', 'kwargs'))
 
 class LuteusIRCUI:
    def OS(*args, **kwargs):
-      return _OptSpec(list(args), kwargs)
+      return _OptSpec(args, kwargs)
    
    def __init__(self, bnc):
       self.els = set()
@@ -147,6 +147,7 @@ class LuteusIRCUI:
          
          for arg in opt_names:
             (oa, okwa) = as_.annotations[arg]
+            oa = list(oa)
             oa.append('--{0}'.format(arg))
             okwa['default'] = dv[arg]
             opt = Option(*oa, **okwa)
