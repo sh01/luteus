@@ -469,7 +469,7 @@ class IRCClientConnection(AsyncLineStream):
       self._send_ping()
       idle_time = (time.time() - self.ts_last_in)
       if (idle_time >= self.timeout):
-         if (idle_time >= (idle_time <= self.timeout + self.maintenance_delay + 16)):
+         if (idle_time >= (self.timeout + self.maintenance_delay + 16)):
             # Not likely.
             self.log(30, '{0} allegedly {1} seconds idle; major clock warp?'
             .format(self, idle_time))
