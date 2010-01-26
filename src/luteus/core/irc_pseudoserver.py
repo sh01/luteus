@@ -44,10 +44,9 @@ class IRCPseudoServer(AsyncSockServer):
       conn.sock_set_keepalive(1)
       conn.sock_set_keepidle(self.conn_timeout, self.conn_timeout, 2)
       def eh(msg):
-         if (self.em_in_msg(conn, msg)):
-            el.close()
+         self.em_in_msg(conn, msg)
       
-      el = conn.em_in_msg.new_prio_listener(eh, -1024)
+      conn.em_in_msg.new_prio_listener(eh, -1024)
       self.em_new_conn(conn)
    
    def close(self):
