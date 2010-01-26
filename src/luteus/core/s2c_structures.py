@@ -374,7 +374,7 @@ class IRCMessage:
    LEN_LIMIT = 512
    ARGC_LIMIT = 15
    
-   def __init__(self, prefix:bytes, command:bytes, parameters, src=None,
+   def __init__(self, prefix:IRCAddress, command:bytes, parameters, src=None,
          pcs=S2CProtocolCapabilitySet()):
       self.prefix = prefix
       self.command = command.upper()
