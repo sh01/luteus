@@ -813,7 +813,7 @@ class IRCClientConnection(AsyncLineStream):
    def _process_msg_004(self, msg):
       """Process RPL_MYINFO message."""
       if ((self.peer is None) and (msg.parameters)):
-         self.peer = msg.parameters[0]
+         self.peer = self.pcs.make_irc_addr(msg.parameters[0])
    
    def _process_005_update(self, name, val):
       nu = name.upper()
