@@ -121,7 +121,7 @@ class SimpleBNC:
    
    @_reg_em('em_in_msg_bc')
    def _process_network_bc_msg(self, msg):
-      if (msg.command == b'PONG'):
+      if (msg.command in (b'PING', b'PONG')):
          return
       if (msg.command == b'ERROR'):
          if (len(msg.parameters) > 0):
@@ -133,6 +133,8 @@ class SimpleBNC:
                (self.nc.get_self_nick(), b'ERROR:' + errstr), src=self,
                pcs=self.nc.conn.pcs)
          msg.trim_last_arg()
+      elif (msg.prefix is None):
+         msg.prefix = self.nc.conn.peer
       
       def chan_filter(chann):
          return (chann in ipsc.wanted_channels)
