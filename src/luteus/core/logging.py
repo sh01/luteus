@@ -491,7 +491,10 @@ class _Logger:
          ctcp_like = False
          
       if (ctcp_like and (self.nc.conn.FC_IDENTIFY_CTCP & self.nc.conn.fc) or
-         ((not ctcp_like) and (self.nc.conn.FC_IDENTIFY_MSG & self.nc.conn.fc))):
+         ((not ctcp_like) and (self.nc.conn.FC_IDENTIFY_MSG & self.nc.conn.fc) and
+         ((msg.parameters[0] != b'$*') or (msg.command != 'NOTICE')))):
+         # Freenode message prefix mangling should have been applied to this
+         # line; remove it.
          if (text and (text[0] in b'+-')):
             msg = msg.copy()
             msg.parameters[1] = text[1:]
