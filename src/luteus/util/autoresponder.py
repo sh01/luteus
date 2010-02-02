@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2009 Sebastian Hagen
+#Copyright 2009,2010 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -64,25 +64,20 @@ class AutoResponder:
       
       return self.add_autoresponse_func(self, cmd, line_re, make_reply)
    
-   def add_autoresponse_by_nick(self, cmd, line_re, pattern, nick_map):
+   def add_autoresponse_by_nick(self, cmd, line_re, response_fmt):
       """Add nick-specific autoresponse."""
       from collections import ByteString
-      nick_map_ = {}
-      code_args = ('utf-8', 'surrogateescape')
-      for (nick, val) in nick_map.items():
-         if (isinstance(val, ByteString)):
-            val = val.decode(*code_args)
-         IRCMessage.build_from_line(pattern.format(nick=nick.decode(*code_args), tok=val).encode(*code_args), src=self, pcs=None).line_build()
-         nick_map_[IRCCIString(nick)] = val
       
       def make_reply(nc, msg):
          nick = nc.get_self_nick()
-         if not (nick in nick_map_):
-            return ()
-         tok = nick_map_[nick]
-         return (IRCMessage.build_from_line(pattern.format(nick=nick.decode(*code_args), tok=tok).encode(*code_args), src=self, pcs=None),)
+         try:
+            out_line = response_fmt.format(nick=nick)
+         except (AttributeError, ValueError):
+            return
+         
+         out_line = out_line.encode('utf-8', 'surrogateescape')
+         return (IRCMessage.build_from_line(out_line, src=self, pcs=None),)
       
-      del(nick_map)
       return self.add_autoresponse_func(cmd, line_re, make_reply)
    
    def _process_msg(self, nc, msg):

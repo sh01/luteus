@@ -19,7 +19,7 @@ import logging
 import socket
 import time
 from socket import AF_INET
-from collections import deque
+from collections import deque, OrderedDict
 
 from .event_multiplexing import OrderingEventMultiplexer
 from .s2c_structures import IRCMessage, S2CProtocolCapabilitySet
@@ -129,12 +129,40 @@ class IRCServerSpec:
         ', '.join('{0}={1}'.format(*a) for a in self.__dict__.items()))
 
 
+class IRCNick(bytes):
+   def __new__(cls, nick, **kwargs):
+      return super().__new__(cls, nick)
+   
+   def __init__(self, nick, **kwargs):
+      super().__init__()
+      for (key,val) in kwargs.items():
+         setattr(self, key, val)
+
+   def __format__(self, fs):
+      if (fs.endswith('S')):
+         rv = self.decode('utf-8', 'surrogateescape')
+         return rv.__format__(fs[:-1])
+         
+      return super().__format__(fs)
+
+# Python 3.1 has a nasty bug which, among other things, prevents subclasses
+# of bytes of being pickled directly. We work around it here.
+   def __reduce_ex__(self, proto):
+      if (proto < 3):
+         raise TypeError('No. You want at least version 3.')
+      
+      return (type(self), (bytes(self),), None, None, None)
+
+
 class IRCUserSpec:
-   def __init__(self, nicks, username, realname, mode=0):
-      self.nicks = nicks
+   def __init__(self, username, realname, mode=0):
+      self.nicks = OrderedDict()
       self.username = username
       self.realname = realname
       self.mode = mode
+   
+   def add_nick(self, nick, **kwargs):
+      self.nicks[nick] = IRCNick(nick, **kwargs)
    
    def make_nick_picker(self):
       nick_iter = iter(self.nicks)
@@ -203,7 +231,9 @@ class IRCClientNetworkLink:
       """Get currently used nick."""
       if (not self.conn):
          return None
-      return self.conn.nick
+      
+      nick = self.conn.nick
+      return self.us.nicks.get(nick, nick)
    
    def get_pcs(self):
       """Get current ISUPPORT data."""
