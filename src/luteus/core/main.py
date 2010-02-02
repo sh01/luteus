@@ -123,9 +123,11 @@ def main():
    logger = logging.getLogger()
    log = logger.log
    
+   conf_fn = 'luteus.conf'
+   
    op = optparse.OptionParser()
    op.add_option('--dir', default='~/.luteus', help='Directory to chdir to', metavar='DIR')
-   op.add_option('--config', default='luteus.conf', help='Config file to use', metavar='FILE')
+   op.add_option('--config', default=None, help='Config file to use', metavar='FILE')
    op.add_option('--debug', default=False, action='store_true', help="Don't fork, and log to stderr.")
    
    og_cc = optparse.OptionGroup(op, "Cert-retrieval mode")
@@ -143,6 +145,9 @@ def main():
    if (opts.debug or opts.check_certs):
       streamlogger_setup()
    
+   if (opts.config):
+      conf_fn = os.path.abspath(opts.config)
+   
    tpath = os.path.expanduser(opts.dir)
    log(20, 'CDing to {0!a}.'.format(tpath))
    os.chdir(tpath)
@@ -150,7 +155,6 @@ def main():
    # Best to be paranoid for logs, etc.
    os.umask(0o77)
    
-   conf_fn = opts.config
    conf = LuteusConfig()
    log(20, 'Loading config from {0!a}.'.format(conf_fn))
    conf.load_config_by_fn(conf_fn)
