@@ -385,7 +385,12 @@ class IRCMessage:
    def copy(self):
       return self.__class__(self.prefix, self.command, self.parameters,
          self.src, self.pcs)
-      
+   
+   def __getstate__(self):
+      rv = self.__dict__.copy()
+      rv['src'] = None
+      return rv
+   
    @classmethod
    def build_from_line(cls, line, src, pcs):
       """Build instance from raw line"""

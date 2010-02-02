@@ -537,8 +537,7 @@ class IRCClientConnection(AsyncLineStream):
          return
       if (line_data == b''):
          return
-      msg = IRCMessage.build_from_line(line_data, src=self,
-         pcs=self.pcs)
+      msg = IRCMessage.build_from_line(line_data, src=self, pcs=self.pcs)
       msg.responded = False
       
       self.em_in_msg(msg)
@@ -596,7 +595,7 @@ class IRCClientConnection(AsyncLineStream):
    
    def _send_msg(self, command, *parameters):
       """Build MSG and send to peer immediately."""
-      msg = IRCMessage(None, command, parameters, src=self)
+      msg = IRCMessage(None, command, parameters)
       self.send_msg(msg)
    
    @classmethod

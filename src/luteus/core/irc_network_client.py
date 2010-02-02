@@ -185,9 +185,13 @@ class IRCClientNetworkLink:
       
       self.netname = netname
       self.em_shutdown.new_prio_listener(self._process_conn_shutdown)
+      self.em_in_msg.new_prio_listener(self._em_setsrc, -1048576)
       
       self.ts_last_link = None
       self.ts_last_unlink = None
+   
+   def _em_setsrc(self, msg):
+      msg.src = self
    
    def is_linked(self):
       """Return whether we are linked to the network."""
@@ -359,6 +363,9 @@ class IRCClientNetworkLink:
          sup_em = getattr(conn, emn)
          sub_em = getattr(self, emn_p)
          listener = sup_em.new_prio_listener(sub_em, -512)
+         self.conn_els.append(listener)
+      
+      del(listener)
    
    def void_active_conn(self):
       self.conn = None
