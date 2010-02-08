@@ -104,6 +104,14 @@ class IRCCIString(bytes):
    
    # default
    lowermap = LM_RFC2812
+   def __init__(self, string, *args, **kwargs):
+      super().__init__()
+      try:
+         lowermap = string.lowermap
+      except AttributeError:
+         pass
+      else:
+         self.lowermap = lowermap
    
    def __eq__(self, other):
       if not (isinstance(other, ByteString)):

@@ -22,7 +22,7 @@ from socket import AF_INET
 from collections import deque, OrderedDict
 
 from .event_multiplexing import OrderingEventMultiplexer
-from .s2c_structures import IRCMessage, S2CProtocolCapabilitySet
+from .s2c_structures import IRCCIString, IRCMessage, S2CProtocolCapabilitySet
 from .irc_client import IRCClientConnection
 from .irc_num_constants import *
 from .logging import HRLogger
@@ -129,12 +129,12 @@ class IRCServerSpec:
         ', '.join('{0}={1}'.format(*a) for a in self.__dict__.items()))
 
 
-class IRCNick(bytes):
+class IRCNick(IRCCIString):
    def __new__(cls, nick, **kwargs):
       return super().__new__(cls, nick)
    
    def __init__(self, nick, **kwargs):
-      super().__init__()
+      super().__init__(nick)
       for (key,val) in kwargs.items():
          setattr(self, key, val)
 
@@ -144,14 +144,6 @@ class IRCNick(bytes):
          return rv.__format__(fs[:-1])
          
       return super().__format__(fs)
-
-# Python 3.1 has a nasty bug which, among other things, prevents subclasses
-# of bytes of being pickled directly. We work around it here.
-   def __reduce_ex__(self, proto):
-      if (proto < 3):
-         raise TypeError('No. You want at least version 3.')
-      
-      return (type(self), (bytes(self),), None, None, None)
 
 
 class IRCUserSpec:
