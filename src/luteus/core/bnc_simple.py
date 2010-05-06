@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2009 Sebastian Hagen
+#Copyright 2009,2010 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -134,6 +134,7 @@ class SimpleBNC:
                pcs=self.nc.conn.pcs)
          msg.trim_last_arg()
       elif (msg.prefix is None):
+         msg = msg.copy()
          msg.prefix = self.nc.conn.peer
       
       def chan_filter(chann):
