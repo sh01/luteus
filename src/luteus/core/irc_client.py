@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2009 Sebastian Hagen
+#Copyright 2009,2010 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -623,8 +623,11 @@ class IRCClientConnection(AsyncLineStream):
    
    def process_close(self):
       """Process connection closing."""
-      self.timer_maintenance.cancel()
+      self.log(20, 'process_close() called on {0}.'.format(id(self)))
       self.em_shutdown()
+      
+      self.timer_maintenance.cancel()
+      self.timer_maintenance = None
    
    def _process_msg_PING(self, msg):
       """Answer PING."""
