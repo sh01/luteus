@@ -265,10 +265,7 @@ class LogFile:
       
    def _open_file(self):
       f = _get_locked_file(self.fn)
-      import pickle
       self.f = f
-      self.p = pickle.Pickler(f)
-      self.u = pickle.Unpickler(f)
    
    def close(self):
       self.f.close()
@@ -284,6 +281,12 @@ class BacklogFile(LogFile):
    def put_record(self, o):
       self.p.dump(o)
       self.f.flush()
+   
+   def _open_file(self):
+      import pickle
+      super()._open_file()
+      self.p = pickle.Pickler(self.f)
+      self.u = pickle.Unpickler(self.f)
    
    def get_records(self):
       from pickle import UnpicklingError

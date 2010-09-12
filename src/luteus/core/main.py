@@ -186,7 +186,6 @@ def main():
    
    if not (opts.debug):
       daemon_fork(pidfile=pid_file)
-      import time
    
    log(50, 'Initialization done; starting normal operation.')
    conf._start_connections()
