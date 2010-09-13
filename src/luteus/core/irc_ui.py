@@ -229,9 +229,9 @@ class LuteusIRCUI:
    
    @rch("BLREPLAY", "Force backlog replay for specified contexts.")
    def _pc_blreplay(self, ctx, *chans,
-      nick:OS('-n', help="Replay nick backlog.", action='store_true')=False):
+      nicks:OS('-n', help="Replay nick backlog.", action='store_true')=False):
       blcs = list(chans)
-      if (nick):
+      if (nicks):
          blcs.append(None)
       
       bl = self.bnc.bl
