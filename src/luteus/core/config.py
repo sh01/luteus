@@ -100,13 +100,13 @@ class LuteusConfig:
       self._single_bnc_names.add(key)
       return basedir
 
-   def new_bnc(self, nc, *args, attach_ui=True, attach_bl=True, bl_auto_discard=True, bl_basedir=SimpleBNC.BL_BASEDIR_DEFAULT,
-      filter=None, **kwargs):
+   def new_bnc(self, nc, *args, attach_ui=True, attach_bl=True, bl_auto_discard=True, bl_basedir=None, filter=None, **kwargs):
       rv = SimpleBNC(nc, *args, **kwargs)
       if (attach_ui):
          iui = LuteusIRCUI(rv)
       if (attach_bl):
-         self._check_bldir(b'by_network', b'', nc.netname)
+         if (bl_basedir is None):
+            bl_basedir = self._check_bldir(b'by_network', b'', nc.netname)
          rv.attach_backlogger(filter=filter, basedir=bl_basedir, auto_discard=bl_auto_discard)
       return rv
 
