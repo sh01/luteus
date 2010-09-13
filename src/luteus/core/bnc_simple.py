@@ -21,7 +21,7 @@ import logging
 from .event_multiplexing import OrderingEventMultiplexer
 from .s2c_structures import *
 from .irc_num_constants import *
-from .logging import BackLogger, BLFormatter
+from .logging import BackLogger, AutoDiscardingBackLogger, BLFormatter
 
 
 def _reg_em(em_name, priority=0):
@@ -41,7 +41,16 @@ class SimpleBNC:
    mirror_cmds = set((b'PRIVMSG', b'NOTICE'))
    
    BL_BASEDIR_DEFAULT = os.path.join(b'data', b'backlog')
-   
+   #EM calling conventions:
+   # Input from connected IRC clients.
+   #    em_client_in_msg(msg: IRCMessage)
+   #
+   # Messages forwarded to connected IRC clients, and the ipscs thet have been forwarded to.
+   #    em_client_msg_fwd(ipscs, msg: IRCMessage, outgoing: bool)
+   #
+   # Dumps of backlog data for specific contexts to a set of ipscs.
+   #    em_client_bl_dump(ipscs, bl_contexts: list)
+
    def __init__(self, network_conn, blf=None):
       self.nc = network_conn
       self.nick = network_conn.get_self_nick()
@@ -55,6 +64,8 @@ class SimpleBNC:
       self.blf = blf
       
       self.em_client_in_msg = OrderingEventMultiplexer(self)
+      self.em_client_msg_fwd = OrderingEventMultiplexer(self)
+      self.em_client_bl_dump = OrderingEventMultiplexer(self)
       
       for name in dir(self):
          attr = getattr(self, name)
@@ -120,60 +131,72 @@ class SimpleBNC:
       return (self.nc.get_pcs() or self.pcs)
    
    @_reg_em('em_in_msg_bc')
-   def _process_network_bc_msg(self, msg):
-      if (msg.command in (b'PING', b'PONG')):
+   def _process_network_bc_msg(self, msg_orig):
+      if (msg_orig.command in (b'PING', b'PONG')):
          return
-      if (msg.command == b'ERROR'):
-         if (len(msg.parameters) > 0):
-            errstr = b' ' + msg.parameters[0]
-         else:
-            errstr = b''
-         
-         msg = IRCMessage(None, b'PRIVMSG',
-               (self.nc.get_self_nick(), b'ERROR:' + errstr), src=self,
-               pcs=self.nc.conn.pcs)
-         msg.trim_last_arg()
-      elif (msg.prefix is None):
-         msg = msg.copy()
-         msg.prefix = self.nc.conn.peer
       
       def chan_filter(chann):
          return (chann in ipsc.wanted_channels)
-
-      for ipsc in self.ips_conns:
-         if (not msg.get_chan_targets()):
-            msg_out = msg
-         else:
-            msg_out = msg.copy()
-            target_num = msg_out.filter_chan_targets(chan_filter)
-            if (target_num < 1):
-               continue
+      
+      for msg in msg_orig.split_by_target():
+         if (msg.command == b'ERROR'):
+            if (len(msg.parameters) > 0):
+               errstr = b' ' + msg.parameters[0]
+            else:
+               errstr = b''
          
-         ipsc.send_msg(msg_out)
+            msg2 = IRCMessage(None, b'PRIVMSG',
+                  (self.nc.get_self_nick(), b'ERROR:' + errstr), src=self,
+                  pcs=self.nc.conn.pcs)
+            msg2.trim_last_arg()
+         elif (msg.prefix is None):
+            msg2 = msg.copy()
+            msg2.prefix = self.nc.conn.peer
+         else:
+            msg2 = msg
+
+         ipscs_out = []
+         for ipsc in self.ips_conns:
+            if (not msg.get_chan_targets()):
+               msg_out = msg2
+            else:
+               msg_out = msg2.copy()
+               target_num = msg_out.filter_chan_targets(chan_filter)
+               if (target_num < 1):
+                  continue
+         
+            ipsc.send_msg(msg_out)
+            ipscs_out.append(ipsc)
+         
+         self.em_client_msg_fwd(ipscs_out, msg, False)
    
    @_reg_em('em_out_msg')
-   def _process_network_out_msg(self, msg):
-      if not (msg.command in self.mirror_cmds):
+   def _process_network_out_msg(self, msg_orig):
+      if not (msg_orig.command in self.mirror_cmds):
          return
-      msg2 = msg.copy()
-      msg2.src = self
       
       def chan_filter(chann):
          return (chann in ipsc.wanted_channels)
       
-      for ipsc in self.ips_conns:
-         if (msg.src is ipsc):
-            continue
-         
-         msg_out = msg2.copy()
-         msg_out.prefix = ipsc.get_user_ia()
-         
-         if (msg.get_chan_targets()):
-            target_num = msg_out.filter_chan_targets(chan_filter)
-            if (target_num < 1):
-               continue
-         
-         ipsc.send_msg(msg_out)
+      for msg in msg_orig.split_by_target():
+         msg2 = msg.copy()
+         msg2.src = self
+            
+         aware_clients = []
+         for ipsc in self.ips_conns:
+            msg_out = msg2.copy()
+            msg_out.prefix = ipsc.get_user_ia()
+            
+            if (msg.get_chan_targets()):
+               target_num = msg_out.filter_chan_targets(chan_filter)
+               if (target_num < 1):
+                  continue
+            
+            aware_clients.append(ipsc)
+            if not (msg.src is ipsc):
+               ipsc.send_msg(msg_out)
+
+         self.em_client_msg_fwd(aware_clients, msg, True)
    
    @_reg_em('em_in_msg')
    def _process_network_msg(self, msg):
@@ -191,6 +214,7 @@ class SimpleBNC:
       msgs = self.blf.format_backlog(self.bl, conn.self_name, chnn)
       for msg in msgs:
          conn.send_msg(msg)
+      self.em_client_bl_dump((conn,), (chnn,))
    
    def _process_client_msg(self, conn, msg):
       msg.eaten = False
@@ -225,10 +249,14 @@ class SimpleBNC:
       
       self.nc.conn.put_msg(msg, cb)
    
-   def attach_backlogger(self, basedir=BL_BASEDIR_DEFAULT, filter=None):
+   def attach_backlogger(self, basedir=BL_BASEDIR_DEFAULT, filter=None, auto_discard=True):
       if not (self.bl is None):
          raise Exception('Backlogger attached already.')
-      self.bl = BackLogger(basedir, self.nc, filter=filter)
+      if (auto_discard):
+         bl_cls = AutoDiscardingBackLogger
+      else:
+         bl_cls = BackLogger
+      self.bl = bl_cls(basedir, self, filter=filter)
    
    def take_ips_connection(self, conn):
       if (not conn):
@@ -257,4 +285,5 @@ class SimpleBNC:
          msgs = self.blf.format_backlog(self.bl, conn.self_name, None)
          for msg in msgs:
             conn.send_msg(msg)
+         self.em_client_bl_dump((conn,), (None,))
    

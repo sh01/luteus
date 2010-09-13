@@ -617,6 +617,15 @@ class IRCMessage:
          else return None or []"""
       return self.get_targets()[0]
    
+   def split_by_target(self):
+      """Split into a sequence of messages, one for each target."""
+      rv = []
+      for target in self.parameters[0].split(b','):
+         msg = self.copy()
+         msg.parameters[0] = target
+         rv.append(msg)
+      return rv
+   
    def filter_chan_targets(self, filt):
       """Adjust chan target set by removing channel-targets for which
          (not filt(chann)). Returns new number of targets."""
@@ -630,8 +639,12 @@ class IRCMessage:
             continue
          targets_new.append(target)
       
-      self.parameters[0] = b','.join(targets_new)
-      return len(targets_new)
+      rv = len(targets_new)
+      if (rv == 0):
+         self.parameters[0] = None
+      else:
+         self.parameters[0] = b','.join(targets_new)
+      return rv
    
    def get_notarget_parameters(self):
       """Return parameters, minus target spec."""

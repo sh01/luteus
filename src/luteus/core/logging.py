@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2009 Sebastian Hagen
+#Copyright 2009,2010 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -82,6 +82,9 @@ class LogConnShutdown(LogEntry):
    def get_text(self):
       return ("Bouncer disconnected from remote {0!a}.".format(self.peer_addr).encode('ascii'))
 
+class LogProcessShutdown(LogEntry):
+   def get_text(self):
+      return b'Luteus process shut down.'
 
 class _LogFormatter:
    cmd_map = {b'ACTION': b'*'}
@@ -238,12 +241,15 @@ class LogFormatter(_LogFormatter):
       return b''.join(super().format_entry(None, None, e))
 
 
-def _get_locked_file(fn):
+def _get_locked_file(fn, init_mode='r+b'):
    try:
-      f = open(fn, 'r+b')
+      f = open(fn, init_mode)
    except EnvironmentError:
+      dn = os.path.dirname(fn)
+      if (dn == b''):
+         dn = b'.'
       try:
-         os.makedirs(os.path.dirname(fn))
+         os.makedirs(dn)
       except OSError as exc:
          from errno import EEXIST
          if (exc.errno != EEXIST):
@@ -278,9 +284,18 @@ class LogFile:
 
 
 class BacklogFile(LogFile):
+   def __init__(self, fn):
+      super().__init__(fn)
+      self._discarded_record_count = self._get_init_record()
+      self._buffered_record_count = len(self.get_records())
+   
    def put_record(self, o):
       self.p.dump(o)
+      self._buffered_record_count += 1
       self.f.flush()
+   
+   def _get_dcb(self):
+      return (self._discarded_record_count + self._buffered_record_count)
    
    def _open_file(self):
       import pickle
@@ -288,29 +303,66 @@ class BacklogFile(LogFile):
       self.p = pickle.Pickler(self.f)
       self.u = pickle.Unpickler(self.f)
    
-   def get_records(self):
-      from pickle import UnpicklingError
-      
+   def _get_init_record(self):
       self.f.seek(0)
+      try:
+         rv = self.u.load()
+      except EOFError:
+         rv = 0
+         self.f.seek(0)
+         self.p.dump(rv)
+      return rv
+   
+   def get_records(self, skip=1):
+      self.f.seek(0)
+      for i in range(skip):
+         self.u.load()
+      
       rv = []
       while (True):
          try:
             o = self.u.load()
-         except (EOFError,):
+         except EOFError:
             break
          rv.append(o)
       
-      self.f.seek(0, 2)
       self._ts_last_use = time.time()
       return rv
    
-   def clear_records(self):
+   def _discard_data(self, target_drc):
       import pickle
-      self.f.seek(0)
-      self.f.truncate(0)
-      self.f.flush()
-      self.p = pickle.Pickler(self.f)
+      
+      off = target_drc - self._discarded_record_count
+      if (off <= 0):
+         return
+      
+      if (off > self._buffered_record_count):
+         raise ValueError("Can't discard {0} records from file having {1}.".format(off, self._buffered_record_count))
+      
+      fn_tmp = self.fn + b'.tmp'
+      f_old = self.f
+      f_new = _get_locked_file(fn_tmp, 'w+b')
+      
+      sdb_new = off
+      pickler_new = pickle.Pickler(f_new)
+      pickler_new.dump(target_drc)
+      for record in self.get_records(off+1):
+         pickler_new.dump(record)
+      
+      os.rename(fn_tmp, self.fn)
+      f_new.flush()
+      self.f.close()
+      self._buffered_record_count -= off
+      self._discarded_record_count = target_drc
+      
+      self.f = f_new
+      self.p = pickler_new
+      self.u = pickle.Unpickler(self.f)
       self._ts_last_use = time.time()
+
+   def clear_records(self):
+      data_off = self._discarded_record_count + self._buffered_record_count
+      self._discard_data(data_off)
 
 
 class RawLogFile(LogFile):
@@ -408,14 +460,15 @@ class _Logger:
       self.basedir = basedir
       self.nc = nc
       self.filter = filter
-      
       self._storage = {}
-      
       self.maintenance_timer = None
-      
+      self._ems_reg()
+   
+   def _ems_reg(self):
       self.nc.em_in_msg_pre.new_prio_listener(self._process_msg_in, -512)
       self.nc.em_out_msg.new_prio_listener(self._process_msg_out, -512)
       self.nc.em_shutdown.new_prio_listener(self._process_conn_shutdown, -512)
+      self.nc.ed.em_shutdown.new_listener(self._process_process_shutdown)
    
    def _do_maintenance(self):
       now = time.time()
@@ -454,34 +507,41 @@ class _Logger:
       
       self._get_file(ctx).put_record(r)
    
+   def _process_process_shutdown(self):
+      r = LogProcessShutdown()
+      for chan in self.nc.get_channels(stale=True):
+         self._put_record_file(chan, r)
+
    def _process_conn_shutdown(self):
       r = LogConnShutdown(self.nc.get_peer_address(stale=True))
       for chan in self.nc.get_channels(stale=True):
          self._put_record_file(chan, r)
    
-   def _process_msg_in(self, msg):
+   def _get_src(self, msg, outgoing):
       src = msg.prefix
       if (src is None):
-         src = self.nc.get_peer()
-         if (src is None):
-            src = b'?'
-         src = msg.pcs.make_irc_addr(src)
-         src.type = IA_SERVER
-      
-      self._process_msg(msg, src, False)
+         if (outgoing):
+            src = self.nc.get_self_nick()
+         else:
+            src = self.nc.get_peer()
+            if (src is None):
+               src = b'?'
+            src = msg.pcs.make_irc_addr(src)
+            src.type = IA_SERVER
+      return src
+   
+   def _process_msg_in(self, msg):      
+      self._process_msg(msg, False)
       
    def _process_msg_out(self, msg):
-      src = msg.prefix
-      if (src is None):
-         src = self.nc.get_self_nick()
-      
-      self._process_msg(msg, src, True)
+      self._process_msg(msg, True)
    
    def _preprocess_in_msg(self, msg):
       if (not (msg.command in (b'PRIVMSG', b'NOTICE'))):
          return msg
       if (len(msg.parameters) < 2):
          return msg
+      
       
       text = msg.parameters[1]
       (tf, ctcps) = msg.split_ctcp()
@@ -505,20 +565,31 @@ class _Logger:
             self.log(40, "{0} got message {1} from {2}, which doesn't appear to have undergone freenet prefix mangling even though we expected it. This is ok for this message, but indicates a desync that will most likely lead to silent data corruption elsewhere. FIX THIS!".format(self, msg, self.nc))
       return msg
 
-   def _process_msg(self, msg, src, outgoing):
+   @classmethod
+   def _map_nick_ctxs(cls, ctx_s):
+      return ctx_s
+
+   def _process_msg(self, msg, outgoing):
       if (not outgoing):
          msg = self._preprocess_in_msg(msg)
       elif (not (msg.command in (b'PRIVMSG', b'NOTICE'))):
-         return
+         return []
       
+      src = self._get_src(msg, outgoing)
       msg2 = msg.copy()
       msg2.src = None
       
       bll = ChanLogLine(msg2, src, outgoing)
+      # Determine logging contexts
       num = msg.get_cmd_numeric()
-      
       if (num is None):
          (nicks, chans) = msg.get_targets()
+         if (nicks and (not outgoing)):
+            if (src.is_nick()):
+               bll_src = msg.pcs.make_cib(src.nick)
+            else:
+               bll_src = msg.pcs.make_cib(src)
+            nicks = [bll_src]
       else:
          nicks = []
          if (num in (332, 333, 366)):
@@ -528,32 +599,30 @@ class _Logger:
          else:
             chans = []
       
+      rv = []
       if (chans):
+         rv.extend(chans)
          for chan in chans:
             self._put_record_file(chan, bll)
       
       if (nicks):
+         nicks = self._map_nick_ctxs(nicks)
+         rv.extend(nicks)
          bll_nick = NickLogLine(msg2, src, outgoing)
-         if (outgoing):
-            for nick in nicks:
-               self._put_record_file(nick, bll_nick)
-         else:
-            if (src.is_nick()):
-               bll_src = msg.pcs.make_cib(src.nick)
-            else:
-               bll_src = msg.pcs.make_cib(src)
-            self._put_record_file(bll_src, bll_nick)
-      
-      if not (msg.command.upper() in self.BC_AUXILIARY):
-         return
+         for nick in nicks:
+            self._put_record_file(nick, bll_nick)
 
-      # Log non-channel commands to chan contexts: NICK and QUIT
-      chan_map = self.nc.get_channels()
-      if ((not (msg.prefix is None)) and (msg.prefix.is_nick())):
-         for chan in chan_map.keys():
-            if (msg.prefix.nick in chan_map[chan].users):
-               self._put_record_file(chan, bll)
+      if (msg.command.upper() in self.BC_AUXILIARY):
+         # Log non-channel commands to chan contexts: NICK and QUIT
+         chan_map = self.nc.get_channels()
+         if ((not (msg.prefix is None)) and (msg.prefix.is_nick())):
+            for chan in chan_map.keys():
+               if (msg.prefix.nick in chan_map[chan].users):
+                  rv.append(chan)
+                  self._put_record_file(chan, bll)
       
+      return rv
+   
    def _get_fn(self, ctx):
       if (ctx is None):
          ctx = b'nicks\x07'
@@ -588,6 +657,10 @@ class HRLogger(_Logger):
 
 class BackLogger(_Logger):
    make_file = BacklogFile
+   def __init__(self, basedir, bnc, *args, **kwargs):
+      self.bnc = bnc
+      super().__init__(basedir, bnc.nc, *args, **kwargs)
+   
    def reset_bl(self, ctx):
       f = self._get_file(ctx)
       f.clear_records()
@@ -595,7 +668,86 @@ class BackLogger(_Logger):
    def get_bl(self, ctx):
       return self._get_file(ctx).get_records()
    
+   @classmethod
+   def _map_nick_ctxs(cls, ctx_s):
+      return [None]*bool(ctx_s)
+   
    def _put_record_file(self, ctx, r):
-      if (isinstance(r, NickLogLine)):
-         ctx = None
       super()._put_record_file(ctx, r)
+
+
+class AutoDiscardingBackLogger(BackLogger):
+   """Backlogger which automatically deletes backlog entries after they have been passed to a client."""
+   ping_delay_max = 8
+   def __init__(self, *args, **kwargs):
+      super().__init__(*args, **kwargs)
+
+   def _ems_reg(self):
+      self.bnc.em_client_msg_fwd.new_prio_listener(self._process_msg)
+      self.bnc.em_client_bl_dump.new_prio_listener(self._process_data_fwd)
+      
+      self.nc.em_shutdown.new_prio_listener(self._process_conn_shutdown, -512)
+      self.nc.ed.em_shutdown.new_listener(self._process_process_shutdown)
+   
+   def _process_data_fwd(self, ipscs, ctx_s):
+      # If we're called, that means the data has been put into the output buffer to one or more of the clients connected to
+      # our bouncer. It does not mean that we've actually pushed it out to the network or that the TCP connection is still
+      # alive, and as such the client may never actually see it.
+      # To reliably avoid data loss, we'll queue a ping to all eligible clients here, and only actually discard the data once
+      # we get a reply.
+      cbd = [((lambda dcb: self._get_file(ctx)._discard_data(dcb)), (self._get_file(ctx)._get_dcb(),)) for ctx in ctx_s]
+      
+      if (ipscs):
+         for ipsc in ipscs:
+            for (cb, cb_args) in cbd:
+               # Queuing the request at the front means that we get called for our last request associated with this ping
+               # *first*. This allows us to be more efficient in discarding the data.
+               ipsc.queue_ping(self.ping_delay_max, cb, cb_args, front=True)
+      
+         del(ipsc)
+      del(ipscs)
+
+   def _process_msg(self, ipscs, msg, outgoing):
+      bl_contexts = super()._process_msg(msg, outgoing)
+      self._process_data_fwd(ipscs, bl_contexts)
+   
+
+def _main():
+   # BL selftests
+   print('===== Performing backlogger selftest. =====')
+   print('==== Making backlogger instance. ====')
+   bl = BackLogger.__new__(BackLogger)
+   bl._ems_reg = lambda: None
+   bl._shedule_maintenance = lambda: None
+   fn = b'__loggingselftests.bin.tmp'
+   bl._get_fn = lambda x: fn
+   _Logger.__init__(bl, '.', None)
+   
+   ctx = IRCCIString(fn)
+   ridx = 0
+   def pr():
+      nonlocal ridx
+      bl._put_record_file(ctx, (ridx,))
+      ridx += 1
+   def rb():
+      bl.reset_bl(ctx)
+   
+   print('==== Executing store/retrieve/reset test. ====')
+   for i in range(64):
+      dcb_l = []
+      for j in range(64):
+         for k in range(16):
+            pr()
+         dcb_l.append(bl._get_file(ctx)._get_dcb())
+      
+      if (i % 2):
+         dcb_l.reverse()
+      
+      for dcb in dcb_l:
+         bl._get_file(ctx)._discard_data(dcb)
+   
+   print('==== Passed. ====')
+   print('===== All done. =====')
+
+if (__name__ == '__main__'):
+   _main()

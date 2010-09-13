@@ -85,13 +85,12 @@ class LuteusConfig:
    def new_ssl_spec(self, *args, **kwargs):
       return SSLSpec(*args, **kwargs)
    
-   def new_bnc(self, *args, attach_ui=True, attach_bl=True, filter=None,
-         **kwargs):
+   def new_bnc(self, *args, attach_ui=True, attach_bl=True, bl_auto_discard=True, filter=None, **kwargs):
       rv = SimpleBNC(*args, **kwargs)
       if (attach_ui):
          iui = LuteusIRCUI(rv)
       if (attach_bl):
-         rv.attach_backlogger(filter=filter)
+         rv.attach_backlogger(filter=filter, auto_discard=bl_auto_discard)
       return rv
 
    def load_config_by_fn(self, fn):

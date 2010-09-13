@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2009 Sebastian Hagen
+#Copyright 2009,2010 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 
 import logging
 import time
+from collections import deque
 
 from gonium.fdm.stream import AsyncLineStream, AsyncSockServer
 
@@ -57,9 +58,42 @@ class IRCPseudoServer(AsyncSockServer):
       del(self.els[:])
 
 
+class _PendingPing:
+   def __init__(self, ipsc, pid, start_ts):
+      self._ipsc = ipsc
+      self._pid = pid
+      self._start_ts = start_ts
+      self._timeout = None
+      self._cb = deque()
+   
+   def _add_callback(self, cb, cb_args, cb_kwargs, left):
+      if (left):
+         self._cb.appendleft((cb, cb_args, cb_kwargs))
+      else:
+         self._cb.append((cb, cb_args, cb_kwargs))
+   
+   def _call_back(self, log):
+      if (self._ipsc is None):
+         raise IRCPSStateError("This pp instance has already called back.")
+      
+      for (cb, cb_args, cb_kwargs) in self._cb:
+         try:
+            cb(*cb_args, **cb_kwargs)
+         except Exception as exc:
+            log(40, 'IPSC PONG callback on {0}(*{1}, **{2}) failed:'.format(cb, cb_args, cb_kwargs), exc_info=True)
+
+      self.cancel()
+   
+   def cancel(self):
+      if (self._ipsc is None):
+         return
+      self._ipsc._cancel_pp(self._pid)
+      self._ipsc = None
+
 class IRCPseudoServerConnection(AsyncLineStream):
    logger = logging.getLogger('IRCPseudoServerConnection')
    log = logger.log
+   maintenance_delay = 50
    
    EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_out_msg', 'em_shutdown')
    def __init__(self, *args, ssts, self_name=b'luteus.bnc', **kwargs):
@@ -73,6 +107,11 @@ class IRCPseudoServerConnection(AsyncLineStream):
       self.realname = None
       self.wanted_channels = set()
       self.pcs = S2CProtocolCapabilitySet()
+      self._ping_idx = 0
+      self._pings_pending = {}
+      self._ping_queued = None
+      self._ping_timer = None
+      self._maintenance_timer = self._ed.set_timer(self.maintenance_delay, self._do_maintenance, persist=True)
       
       self.self_name = self_name
       self.peer_address = self.fl.getpeername()
@@ -81,6 +120,27 @@ class IRCPseudoServerConnection(AsyncLineStream):
          self.em_new(name)
          
       self.em_in_msg.new_prio_listener(self.process_input_statekeeping)
+   
+   def close(self, *args, **kwargs):
+      if not (self._maintenance_timer is None):
+         self._maintenance_timer.cancel()
+         self._maintenance_timer = None
+      super().close(*args, **kwargs)
+   
+   def _do_maintenance(self):
+      if (not self):
+         self._maintenance_timer.cancel()
+         self._maintenance_timer = None
+         return
+      
+      expired_pp = deque()
+      now = time.time()
+      for pp in self._pings_pending.values():
+         if (pp.timeout < now):
+            expired_pp.append(key)
+      
+      for pp in expired_pp:
+         pp.cancel()
       
    def em_new(self, attr):
       """Instantiate new EventMultiplexer attribute"""
@@ -89,6 +149,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
    def process_close(self):
       """Process connection closing."""
       self.em_shutdown()
+      self._pings_pending.clear()
 
    def take_connection(self, mgr):
       """Try to take this connection.
@@ -132,6 +193,47 @@ class IRCPseudoServerConnection(AsyncLineStream):
          self.log(30, 'From {0}: msg {1} failed to parse: {2}'.format(
             self.peer_address, msg, exc))
    
+   def _make_ping_id(self):
+      i = self._ping_idx
+      self._ping_idx += 1
+      return (b'LBNCIPSC' + '{0}'.format(i).encode('ascii'))
+   
+   def _cancel_pp(self, pid):
+      del(self._pings_pending[pid])
+   
+   def _set_pp(self, max_delay):
+      pq = self._ping_queued
+      start_ts = time.time()+max_delay
+      if (pq is None):
+         pq = self._ping_queued = _PendingPing(self, self._make_ping_id(), start_ts)
+         self._ping_timer = self._ed.set_timer(start_ts, self._fire_ping, interval_relative=False)
+      elif (pq._start_ts > start_ts):
+         pq._start_ts = start_ts
+         self._ping_timer.cancel()
+         self._ping_timer = self._ed.set_timer(start_ts, self._fire_ping, interval_relative=False)
+      return pq
+   
+   def _fire_ping(self):
+      pq = self._ping_queued
+      if (pq is None):
+         return
+      pq.timeout = time.time() + 128
+      self._pings_pending[pq._pid] = pq
+      self.send_msg(IRCMessage(None, b'PING', (pq._pid,)))
+      self._ping_queued = None
+      self._ping_timer = None
+   
+   def queue_ping(self, max_delay, cb, cb_args=(), cb_kwargs={}, front=False):
+      """Send a PING to our peer, calling back if and when we get a response.
+      
+      'max_delay' specifies the maximum amount of time to wait before sending the PING in seconds; this allows us to batch
+      requests from several sources.
+      'beginning' specifies whether to add this request at the beginning of the callback sequence."""
+      pid = self._make_ping_id()
+      pp = self._set_pp(max_delay)
+      pp._add_callback(cb, cb_args, cb_kwargs, front)
+      return pp
+   
    def _pc_check(self, msg, num:int, send_error=False):
       """Throw exception if msg has less than the specified number of
          parameters."""
@@ -143,6 +245,8 @@ class IRCPseudoServerConnection(AsyncLineStream):
    
    def send_msg(self, msg):
       """Send MSG to peer."""
+      if (not self):
+         return
       self.em_out_msg(msg)
       line_out = msg.line_build()
       self.send_bytes((line_out,))
@@ -250,7 +354,15 @@ class IRCPseudoServerConnection(AsyncLineStream):
    def _process_msg_PING(self, msg):
       """Answer PING."""
       self.send_msg(IRCMessage(self.self_name, b'PONG', msg.parameters[:1]))
-      
+   
+   def _process_msg_PONG(self, msg):
+      """Process PONG."""
+      pid = msg.parameters[0]
+      pp = self._pings_pending.get(pid)
+      if (pp is None):
+         return
+      pp._call_back(self.log)
+   
    def _process_msg_NICK(self, msg):
       """Process NICK."""
       if (self.nick):
