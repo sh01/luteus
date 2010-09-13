@@ -230,7 +230,7 @@ class LuteusIRCUI:
    @rch("BLREPLAY", "Force backlog replay for specified contexts.")
    def _pc_blreplay(self, ctx, *chans,
       nicks:OS('-n', help="Replay nick backlog.", action='store_true')=False):
-      blcs = list(chans)
+      blcs = [ctx.cc.pcs.make_cib(chan) for chan in chans]
       if (nicks):
          blcs.append(None)
       
@@ -241,8 +241,7 @@ class LuteusIRCUI:
          return
       
       for blc in blcs:
-         blc_ci = ctx.cc.pcs.make_cib(blc)
-         msgs = blf.format_backlog(bl, cc.self_name, blc_ci)
+         msgs = blf.format_backlog(bl, cc.self_name, blc)
          for msg in msgs:
             cc.send_msg(msg)
    
