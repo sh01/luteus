@@ -20,6 +20,7 @@ import logging
 import os
 import os.path
 import time
+from weakref import WeakValueDictionary
 
 from .s2c_structures import IRCMessage, IA_SERVER, IRCCIString
 
@@ -264,7 +265,18 @@ def _get_locked_file(fn, init_mode='r+b'):
 
 
 class LogFile:
+   _OPEN_FILES = WeakValueDictionary()
+   
    def __init__(self, fn):
+      ap = os.path.abspath(fn)
+      _lf = self._OPEN_FILES.get(ap)
+      if not (_lf is None):
+         if (_lf.f):
+            raise ValueError("We've opened file {0!a} for logging purposes already. Aborting.".format(fn))
+         else:
+            _lf.close()
+      
+      self._OPEN_FILES[ap] = self
       self.fn = fn
       self._open_file()
       self._ts_last_use = time.time()
@@ -272,9 +284,14 @@ class LogFile:
    def _open_file(self):
       f = _get_locked_file(self.fn)
       self.f = f
-   
+
    def close(self):
+      if (self.f is None):
+         return
       self.f.close()
+      self.f = None
+      ap = os.path.abspath(self.fn)
+      del(self._OPEN_FILES[ap])
 
    def put_record(self, r):
       text = self.format_record(r)
@@ -368,7 +385,6 @@ class BacklogFile(LogFile):
 class RawLogFile(LogFile):
    def __init__(self, fn, utc=True, time_fmt=None):
       self.fn = fn
-      self.f = _get_locked_file(fn)
       self.utc = utc
       self.time_fmt = time_fmt
       super().__init__(fn)
@@ -511,6 +527,9 @@ class _Logger:
       r = LogProcessShutdown()
       for chan in self.nc.get_channels(stale=True):
          self._put_record_file(chan, r)
+      for f in self._storage.values():
+         f.close()
+      self._storage.clear()
 
    def _process_conn_shutdown(self):
       r = LogConnShutdown(self.nc.get_peer_address(stale=True))
