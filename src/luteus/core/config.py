@@ -15,6 +15,8 @@
 # You should have received a copy of the GNU General Public License
 # along with luteus.  If not, see <http://www.gnu.org/licenses/>.
 
+import os.path
+
 from gonium.service_aggregation import ServiceAggregate
 
 from .irc_network_client import IRCClientNetworkLink, IRCUserSpec, IRCServerSpec, SSLSpec
@@ -42,6 +44,7 @@ class LuteusConfig:
       
       self.log_formatter_default = self.LogFormatter()
       self.assoc_handler = NetUserAssocHandler(self._sa.ed)
+      self._single_bnc_names = set()
       
       for name in dir(self):
          if (name.startswith('_')):
@@ -85,13 +88,41 @@ class LuteusConfig:
    def new_ssl_spec(self, *args, **kwargs):
       return SSLSpec(*args, **kwargs)
    
+   def _check_bldir(self, prefix, username, netname):
+      key = (prefix, username, netname)
+      if (key in self._single_bnc_names):
+         raise Exception("User/network name {0!a} collision; only one such pair per luteus process is allowed.".format(key))
+         
+      basedir = os.path.join(SimpleBNC.BL_BASEDIR_DEFAULT, prefix, username)
+      if not (os.path.isdir(basedir)):
+         os.makedirs(basedir)
+         
+      self._single_bnc_names.add(key)
+      return basedir
+
    def new_bnc(self, *args, attach_ui=True, attach_bl=True, bl_auto_discard=True, bl_basedir=SimpleBNC.BL_BASEDIR_DEFAULT,
       filter=None, **kwargs):
       rv = SimpleBNC(*args, **kwargs)
       if (attach_ui):
          iui = LuteusIRCUI(rv)
       if (attach_bl):
+         self._check_bldir(b'by_network', b'', nc.netname)
          rv.attach_backlogger(filter=filter, basedir=bl_basedir, auto_discard=bl_auto_discard)
+      return rv
+
+   def new_single_bnc(self, nc, ah, username, password, *args, attach_ui=True, attach_bl=True, bl_auto_discard=True,
+      filter=None, **kwargs):
+      rv = SimpleBNC(nc, *args, **kwargs)
+      if (attach_ui):
+         iui = LuteusIRCUI(rv)
+      if (attach_bl):
+         if (isinstance(username,str)):
+            username = username.encode()
+         if ((len(username) < 1) or (b'/' in username)):
+            raise Exception("Username {0!a} is invalid.".format(username))      
+         basedir = self._check_bldir(b'by_user', username, nc.netname)
+         rv.attach_backlogger(filter=filter, basedir=basedir, auto_discard=bl_auto_discard)
+      ah.add_user(username, password)
       return rv
 
    def load_config_by_fn(self, fn):
