@@ -100,9 +100,9 @@ class LuteusConfig:
       self._single_bnc_names.add(key)
       return basedir
 
-   def new_bnc(self, *args, attach_ui=True, attach_bl=True, bl_auto_discard=True, bl_basedir=SimpleBNC.BL_BASEDIR_DEFAULT,
+   def new_bnc(self, nc, *args, attach_ui=True, attach_bl=True, bl_auto_discard=True, bl_basedir=SimpleBNC.BL_BASEDIR_DEFAULT,
       filter=None, **kwargs):
-      rv = SimpleBNC(*args, **kwargs)
+      rv = SimpleBNC(nc, *args, **kwargs)
       if (attach_ui):
          iui = LuteusIRCUI(rv)
       if (attach_bl):
