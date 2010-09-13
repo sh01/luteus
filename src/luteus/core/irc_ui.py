@@ -68,7 +68,10 @@ class LuteusOP(OptionParser):
    
    def clear_output(self):
       """Discard cached output."""
-      self.file_b.truncate(0)
+      self.file_b.seek(0)
+      self.file_b.truncate()
+      self.file_t.seek(0)
+      self.file_t.truncate()
 
 class LuteusUICtx:
    def __init__(self, cc, bnc_name):
