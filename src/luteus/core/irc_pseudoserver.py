@@ -137,7 +137,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
       now = time.time()
       for pp in self._pings_pending.values():
          if (pp.timeout < now):
-            expired_pp.append(key)
+            expired_pp.append(pp)
       
       for pp in expired_pp:
          pp.cancel()
