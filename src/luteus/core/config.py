@@ -122,7 +122,8 @@ class LuteusConfig:
             raise Exception("Username {0!a} is invalid.".format(username))      
          basedir = self._check_bldir(b'by_user', username, nc.netname)
          rv.attach_backlogger(filter=filter, basedir=basedir, auto_discard=bl_auto_discard)
-      ah.add_user(username, password)
+      user = ah.add_user(username, password)
+      user.add_bnc(rv)
       return rv
 
    def load_config_by_fn(self, fn):
