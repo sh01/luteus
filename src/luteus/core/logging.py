@@ -481,7 +481,7 @@ class _Logger:
       self._ems_reg()
    
    def _ems_reg(self):
-      self.nc.em_in_msg_pre.new_prio_listener(self._process_msg_in, -512)
+      self.nc.em_in_msg.new_prio_listener(self._process_msg_in, 1)
       self.nc.em_out_msg.new_prio_listener(self._process_msg_out, -512)
       self.nc.em_shutdown.new_prio_listener(self._process_conn_shutdown, -512)
       self.nc.ed.em_shutdown.new_listener(self._process_process_shutdown)
@@ -588,10 +588,12 @@ class _Logger:
    def _map_nick_ctxs(cls, ctx_s):
       return ctx_s
 
-   def _process_msg(self, msg, outgoing):
+   def _process_msg(self, msg_orig, outgoing):
       if (not outgoing):
-         msg = self._preprocess_in_msg(msg)
-      elif (not (msg.command in (b'PRIVMSG', b'NOTICE'))):
+         msg = self._preprocess_in_msg(msg_orig)
+      elif (msg_orig.command in (b'PRIVMSG', b'NOTICE')):
+         msg = msg_orig
+      else:
          return []
       
       src = self._get_src(msg, outgoing)
@@ -630,16 +632,12 @@ class _Logger:
          bll_nick = NickLogLine(msg2, src, outgoing)
          for nick in nicks:
             self._put_record_file(nick, bll_nick)
-
+      
       if (msg.command.upper() in self.BC_AUXILIARY):
          # Log non-channel commands to chan contexts: NICK and QUIT
-         chan_map = self.nc.get_channels()
-         if ((not (msg.prefix is None)) and (msg.prefix.is_nick())):
-            for chan in chan_map.keys():
-               if (msg.prefix.nick in chan_map[chan].users):
-                  rv.append(chan)
-                  self._put_record_file(chan, bll)
-      
+         for chan in msg_orig.affected_channels:
+            rv.append(chan.name)
+            self._put_record_file(chan.name, bll)
       return rv
    
    def _get_fn(self, ctx):

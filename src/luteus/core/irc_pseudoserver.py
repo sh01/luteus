@@ -306,11 +306,12 @@ class IRCPseudoServerConnection(AsyncLineStream):
       self.send_msg(IRCMessage(self.self_name, b'461',
          (self._get_nick(), cmd, b"Insufficient parameters.")))
    
-   def change_nick(self, newnick):
+   def change_nick(self, newnick, update_peer=True):
       """Force nickchange."""
       if (self.nick == newnick):
          return
-      self.send_msg(IRCMessage(self.nick, b'NICK', (newnick,)))
+      if (update_peer):
+         self.send_msg(IRCMessage(self.get_user_ia(), b'NICK', (newnick,)))
       self.nick = newnick
    
    def wc_add(self, chann):

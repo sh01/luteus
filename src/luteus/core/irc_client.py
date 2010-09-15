@@ -359,6 +359,17 @@ class BlockQueryWHO(_BlockQuery):
       num = msg.get_cmd_numeric()
       return (num in (RPL_WHOREPLY, RPL_ENDOFWHO), (num == RPL_ENDOFWHO))
 
+class IRCMessageIn(IRCMessage):
+   """IRCMessage built from data we got from our uplink, with some additional attached data explaining side effects.
+
+      The additional attributes will not be preserved on copy()."""
+   # Set of channels whose state has been affected by this message. (NICK, QUIT, JOIN, PART, KICK)
+   affected_channels = None
+   # Whether this message indicates we changed our nick. (NICK)
+   self_nickchange = None
+   def _set_ac(self):
+      rv = self.affected_channels = set()
+      return rv
 
 class IRCClientConnection(AsyncLineStream):
    logger = logging.getLogger('IRCClientConnection')
@@ -537,7 +548,7 @@ class IRCClientConnection(AsyncLineStream):
          return
       if (line_data == b''):
          return
-      msg = IRCMessage.build_from_line(line_data, src=self, pcs=self.pcs)
+      msg = IRCMessageIn.build_from_line(line_data, src=self, pcs=self.pcs)
       msg.responded = False
       
       self.em_in_msg(msg)
@@ -655,6 +666,7 @@ class IRCClientConnection(AsyncLineStream):
          raise IRCProtocolError('Non-nick trying to join channel.')
       
       chnns = msg.parse_JOIN()
+      affected_channels = msg._set_ac()
       for chnn in chnns:
          if (msg.prefix.nick == self.nick):
             # Our join.
@@ -664,16 +676,20 @@ class IRCClientConnection(AsyncLineStream):
             self.channels[chnn] = chan
             self.chm_parser.chan_init(chan)
             self.em_chan_join(None, chan)
+            affected_channels.add(chan)
             continue
          
-         if (not chnn in self.channels):
+         try:
+            chan = self.channels[chnn]
+         except KeyError:
             # Iffy: *IS* this is an error?
             raise IRCProtocolError("JOIN message for channel we aren't on.")
-         chanusers = self.channels[chnn].users
+         chanusers = chan.users
          if (msg.prefix.nick in chanusers):
             raise IRCProtocolError("User joining channel they are already on.")
          chanusers[msg.prefix.nick] = set()
          self.em_chan_join(msg.prefix.nick, self.channels[chnn])
+         affected_channels.add(chan)
    
    def _process_msg_PART(self, msg):
       """Process PART message."""
@@ -688,8 +704,8 @@ class IRCClientConnection(AsyncLineStream):
       else:
          reason = None
       
+      affected_channels = msg._set_ac()
       for chnn in chnns:
-         chnn = self.pcs.make_cib(chnn)
          if (not chnn in self.channels):
             raise IRCProtocolError("PART message for channel we aren't on.")
          chan = self.channels[chnn]
@@ -703,8 +719,8 @@ class IRCClientConnection(AsyncLineStream):
          self.em_chan_leave(msg, nick_em, chan, None)
          if (nick == self.nick):
             del(self.channels[chnn])
-            break
          del(chan.users[nick])
+         affected_channels.add(chan)
    
    def _process_msg_QUIT(self, msg):
       """Process QUIT message."""
@@ -712,17 +728,25 @@ class IRCClientConnection(AsyncLineStream):
          raise IRCPRotocolError('Bogus QUIT prefix.')
       nick = msg.prefix.nick
       
+      affected_channels = msg._set_ac()
       for chan in self.channels.values():
          if not (nick in chan.users):
             continue
          self.em_chan_leave(msg, nick, chan, nick)
+         affected_channels.add(chan)
          del(chan.users[nick])
    
    def _process_msg_KICK(self, msg):
       """Process KICK message."""
       kick_data = msg.parse_KICK()
       
+      affected_channels = msg._set_ac()
+      # Remember which chans we've parted due to this message, so we don't get confused by other users being kicked out of them
+      # after us.
+      chnns_left = set()
       for (chnn, nick) in kick_data:
+         if (chnn in chnns_left):
+            continue
          if not (chnn in self.channels):
             raise IRCProtocolError("KICK message for channel we aren't on.")
          
@@ -744,11 +768,12 @@ class IRCClientConnection(AsyncLineStream):
                del(chan.users[nick])
             except KeyError as exc:
                raise IRCProtocolError('KICKed nick {0!a} not on chan.'.format(nick)) from exc
-            return
-            
+            affected_channels.add(chan)
+            continue
          # Our part.
          del(self.channels[chnn])
-         break
+         chnns_left.add(chnn)
+         affected_channels.add(chan)
    
    def _process_msg_MODE(self, msg):
       """Process MODE message."""
@@ -796,7 +821,11 @@ class IRCClientConnection(AsyncLineStream):
       if (old_nick == self.nick):
          self.log(20, 'Changed nick from {0} to {1}.'.format(old_nick, new_nick))
          self.nick = new_nick
+         msg.self_nickchange = True
+      else:
+         msg.self_nickchange = False
       
+      affected_channels = msg._set_ac()
       for chan in self.channels.values():
          if not (old_nick in chan.users):
             continue
@@ -806,6 +835,7 @@ class IRCClientConnection(AsyncLineStream):
          if (new_nick in chan.users):
             self.log(35, 'Apparent nickchange collision: {0!a} changed nick to {1!a} on {2!a} on {3!a}. Overwriting.'.format(old_nick, new_nick, chan, self.peer_address))
          chan.users[new_nick] = user_data
+         affected_channels.add(chan)
    
    # connect numerics
    def _process_msg_001(self, msg):

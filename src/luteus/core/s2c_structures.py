@@ -571,8 +571,8 @@ class IRCMessage:
       if (len(chnns) == 0):
          raise IRCProtocolError(self)
       
-      if (len(nicks) == 1):
-         nicks *= len(chnns)
+      if (len(chnns) == 1):
+         chnns *= len(nicks)
       elif (len(nicks) != len(chnns)):
          raise IRCProtocolError(self)
       
@@ -619,8 +619,15 @@ class IRCMessage:
    
    def split_by_target(self):
       """Split into a sequence of messages, one for each target."""
+      if not (self.command.upper() in self.chan_cmds):
+         return [self]
+      
+      targets = self.parameters[0].split(b',')
+      if (len(targets) < 2):
+         return [self]
+      
       rv = []
-      for target in self.parameters[0].split(b','):
+      for target in targets:
          msg = self.copy()
          msg.parameters[0] = target
          rv.append(msg)

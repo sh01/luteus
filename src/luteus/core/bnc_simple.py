@@ -95,7 +95,7 @@ class SimpleBNC:
       self.ips_conns.remove(conn)
       conn.mgr = None
    
-   def _process_potential_nickchange(self):
+   def _process_potential_nickchange(self, update_peer=True):
       newnick = self.nc.get_self_nick()
       if (newnick is None):
          return
@@ -103,7 +103,7 @@ class SimpleBNC:
          return
       self.nick = newnick
       for ipsc in self.ips_conns:
-         ipsc.change_nick(self.nick)
+         ipsc.change_nick(self.nick, update_peer=update_peer)
    
    @_reg_em('em_shutdown', -1024)
    def _process_network_conn_shutdown(self):
@@ -134,6 +134,9 @@ class SimpleBNC:
    def _process_network_bc_msg(self, msg_orig):
       if (msg_orig.command in (b'PING', b'PONG')):
          return
+      
+      if (msg_orig.self_nickchange):
+         self._process_potential_nickchange(False)
       
       def chan_filter(chann):
          return (chann in ipsc.wanted_channels)
@@ -197,12 +200,6 @@ class SimpleBNC:
                ipsc.send_msg(msg_out)
 
          self.em_client_msg_fwd(aware_clients, msg, True)
-   
-   @_reg_em('em_in_msg')
-   def _process_network_msg(self, msg):
-      if (msg.command in (b'NICK',)):
-         self._process_potential_nickchange()
-         return
    
    def _fake_join(self, conn, chnn):
       chan = self.nc.conn.channels[chnn]
