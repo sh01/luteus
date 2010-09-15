@@ -209,6 +209,14 @@ class IRCClientNetworkLink:
       
       self.ts_last_link = None
       self.ts_last_unlink = None
+      self._away_msg_default = None
+   
+   def set_away_msg_default(self, reason):
+      if not (reason is None):
+         bytes(reason)
+      if (reason == b''):
+         raise ValueError('Away messages have a minimum length of one byte.')
+      self._away_msg_default = reason
    
    def _em_setsrc(self, msg):
       msg.src = self
@@ -226,6 +234,12 @@ class IRCClientNetworkLink:
       
       nick = self.conn.nick
       return self.us.nicks.get(nick, nick)
+   
+   def get_self_away(self):
+      """Return whether we are marked as being away."""
+      if (not self.conn):
+         return False
+      return self.conn.away
    
    def get_pcs(self):
       """Get current ISUPPORT data."""
@@ -273,8 +287,15 @@ class IRCClientNetworkLink:
       if (conn != self.conn):
          self.log(40, 'Unexpected link finish on unknown connection {0!a}.'.format(conn))
          conn.close()
+         return
       self.log(20, 'Connection {0!a} finished link.'.format(conn))
       self.ts_last_link = time.time()
+      if (self.conn is None):
+         return
+      
+      if not (self._away_msg_default is None):
+         msg = IRCMessage(None, b'AWAY', (self._away_msg_default,), src=self, pcs=self.conn.pcs)
+         self.conn.send_msg(msg)
 
    def _process_conn_shutdown(self):
       was_linked = self.conn.link_done

@@ -301,6 +301,12 @@ class IRCPseudoServerConnection(AsyncLineStream):
    
    def send_msgs_motd(self):
       self.send_msg_num(ERR_NOMOTD, b'MOTD not passed through by luteus.')
+
+   def send_msg_305(self):
+      self.send_msg_num(RPL_UNAWAY, b'You are no longer marked as being away')
+
+   def send_msg_306(self):
+      self.send_msg_num(RPL_NOWAWAY, b'You have been marked as being away')
    
    def send_msg_461(self, cmd):
       self.send_msg(IRCMessage(self.self_name, b'461',

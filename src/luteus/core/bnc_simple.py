@@ -110,6 +110,9 @@ class SimpleBNC:
       self.pcs = self._get_pcs()
       ex_chans = self.nc.conn.channels
       for ipsc in self.ips_conns:
+         if (self.nc.conn.away):
+            ipsc.send_msg_305()
+         
          for chan in ipsc.wanted_channels:
             if not (chan in ex_chans):
                continue
@@ -222,6 +225,15 @@ class SimpleBNC:
       if (msg.command in (b'PING',b'QUIT')):
          return
       
+      if (msg.command == b'AWAY'):
+         if (msg.parameters):
+            away_msg = msg.parameters[0]
+            if (away_msg == b''):
+               away_msg = None
+         else:
+            away_msg = None
+         self.nc.set_away_msg_default(away_msg)
+      
       if not (self.nc.conn):
          conn.send_msg_num(RPL_TRYAGAIN, msg.command,
             b"Bouncer disconnected; please wait for reconnect.")
@@ -277,6 +289,9 @@ class SimpleBNC:
       
       if not (self.nick is None):
          conn.change_nick(self.nick)
+      
+      if (self.nc.get_self_away()):
+         conn.send_msg_306()
       
       if (self.bl):
          msgs = self.blf.format_backlog(self.bl, conn.self_name, None)

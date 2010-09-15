@@ -199,10 +199,10 @@ class _BlockQuery:
       num = msg.get_cmd_numeric()
       if ((num in (RPL_TRYAGAIN, ERR_UNKNOWNCOMMAND)) and
          (len(msg.parameters) > 1) and
-         (msg.parameters[1].upper() == self.msg.command.upper())):
+         (msg.parameters[1].upper() == self.msg.command)):
          return True
       if ((num == ERR_NOTREGISTERED) and (len(msg.parameters) > 0) and
-          (msg.parameters[0].upper() == self.msg.command.upper())):
+          (msg.parameters[0].upper() == self.msg.command)):
          return True
       return False
 
@@ -269,8 +269,7 @@ class BlockQueryGeneric(_BlockQuery):
          return 2
       
       if (msg.get_cmd_numeric() is None):
-         if ((cmd.upper() == b'PONG') and (len(msg.parameters) == 2) and
-             (msg.parameters[1] == self.stop_tok)):
+         if ((cmd == b'PONG') and (len(msg.parameters) == 2) and (msg.parameters[1] == self.stop_tok)):
             self.active = False
             self.callback(self)
             return 2
@@ -439,6 +438,7 @@ class IRCClientConnection(AsyncLineStream):
       self.query_queue = deque()
       self.pending_query = None
       self.ping_tok = None
+      self.away = False
       self.ts_last_in = time.time()
       
       for name in self.EM_NAMES:
@@ -863,6 +863,14 @@ class IRCClientConnection(AsyncLineStream):
       """Process RPL_ISUPPORT message"""
       args = list(msg.parameters[1:])
       self.pcs.parse_msg(msg)
+   
+   def _process_msg_305(self, msg):
+      """Process RPL_UNAWAY message"""
+      self.away = False
+   
+   def _process_msg_306(self, msg):
+      """Process RPL_NOWAWAY message"""
+      self.away = True
    
    def _process_msg_290(self, msg):
       """Process freenode capability-verify MSG"""

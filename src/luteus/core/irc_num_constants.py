@@ -21,6 +21,8 @@ def __add_numeric(num, name):
 __NUM_specs = (
    (263, 'RPL_TRYAGAIN'),
    
+   (305, 'RPL_UNAWAY'),
+   (306, 'RPL_NOWAWAY'),
    (311, 'RPL_WHOISUSER'),
    (312, 'RPL_WHOISSERVER'),
    (313, 'RPL_WHOISOPERATOR'),
