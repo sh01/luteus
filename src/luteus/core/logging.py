@@ -633,7 +633,7 @@ class _Logger:
          for nick in nicks:
             self._put_record_file(nick, bll_nick)
       
-      if (msg.command.upper() in self.BC_AUXILIARY):
+      if (msg.command in self.BC_AUXILIARY):
          # Log non-channel commands to chan contexts: NICK and QUIT
          for chan in msg_orig.affected_channels:
             rv.append(chan.name)

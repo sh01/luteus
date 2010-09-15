@@ -586,7 +586,7 @@ class IRCMessage:
    def get_targets(self):
       """Return a (nicks, chans) pair listing the nicks and chans this
          message is targeted to."""
-      cmd = self.command.upper()
+      cmd = self.command
       if not (cmd in self.chan_cmds):
          return (None, None)
       if (len(self.parameters) < 1):
@@ -619,7 +619,7 @@ class IRCMessage:
    
    def split_by_target(self):
       """Split into a sequence of messages, one for each target."""
-      if not (self.command.upper() in self.chan_cmds):
+      if not (self.command in self.chan_cmds):
          return [self]
       
       targets = self.parameters[0].split(b',')
