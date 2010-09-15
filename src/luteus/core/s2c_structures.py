@@ -679,9 +679,9 @@ class IRCMessage:
 
 
 class IRCChannel:
-   def __init__(self, chan, topic=None, users=None, modes=None,
+   def __init__(self, name, topic=None, users=None, modes=None,
          expect_part=False, cmp_=None):
-      self.chan = chan
+      self.name = name
       self.topic = topic
       self.users = users
       if (modes is None):
@@ -700,24 +700,24 @@ class IRCChannel:
    def make_names_reply(self, target, prefix=None):
       userstrings = self.get_uflag_strings()
       
-      msgs = list(IRCMessage.build_ml_onearg(b'353', (target, b'=', self.chan),
+      msgs = list(IRCMessage.build_ml_onearg(b'353', (target, b'=', self.name),
          (), userstrings, b' ', prefix=prefix))
       
-      msgs.append(IRCMessage(prefix, b'366', (target, self.chan, b'End of NAMES list')))
+      msgs.append(IRCMessage(prefix, b'366', (target, self.name, b'End of NAMES list')))
       return msgs
    
    def make_join_msgs(self, target, prefix=None):
       if (self.topic is None):
          rv = []
       elif (self.topic is False):
-         rv = [IRCMessage(prefix, b'331', (target, self.chan, b'No topic set'))]
+         rv = [IRCMessage(prefix, b'331', (target, self.name, b'No topic set'))]
       else:
-         rv = [IRCMessage(prefix, b'332', (target, self.chan, self.topic))]
+         rv = [IRCMessage(prefix, b'332', (target, self.name, self.topic))]
       
       rv += self.make_names_reply(target, prefix)
       return rv
 
    def __repr__(self):
       return '{0}({1}, {2}, {3}, {4}, {5})'.format(self.__class__.__name__,
-         self.chan, self.topic, self.users, self.modes, self.expect_part)
+         self.name, self.topic, self.users, self.modes, self.expect_part)
 
