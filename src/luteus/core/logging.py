@@ -38,9 +38,9 @@ class LogEntry:
          fmt = self.TS_FMT_DEFAULT
       
       if (utc):
-         tt = time.localtime(self.ts)
-      else:
          tt = time.gmtime(self.ts)
+      else:
+         tt = time.localtime(self.ts)
       
       return time.strftime(fmt, tt)
    
@@ -98,6 +98,10 @@ class _LogFormatter:
       self.set_time_color(time_color)
       self.set_nomsg_channel_line_color(nmcl_color)
       self.set_ctcp_color(ctcp_color)
+   
+   def set_utc(self, utc):
+      """Set whether to exptress timestamps in UTC."""
+      self.utc = utc
    
    # Color setters
    def set_time_color(self, c=None):
