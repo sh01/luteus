@@ -134,18 +134,17 @@ class ChannelModeParser:
             elif (m in self.umodes2umodes):
                umode = self.umodes2umodes[m]
                nick = pcs.make_cib(modeargs[arg_i])
+               user = chan.users[nick]
+               # Some IRC servers *will* push redundant MODE messages to clients if indicated through S2S commands, either
+               # setting modes that are already present or unsetting ones which are not, so such messages do not imply that
+               # we lost sync with the server.
+               # This has been observed in practice on EUIRC due to IRC services racing the resynch sequence of a split
+               # server.
                if (set):
-                  if (umode in chan.users[nick]):
-                     raise IRCProtocolError("Attempting to set present umode")
-                  chan.users[nick].add(umode)
+                  user.add(umode)
                else:
-                  try:
-                     chan.users[nick].remove(umode)
-                  except KeyError as exc:
-                     if (max(chan.users[nick]) < umode):
-                        raise
-                     # This can happen for NAMES prefixes that only indicate
-                     # highest-valued user mode. Nothing we can do about it.
+                  user.discard(umode)
+
                arg_i += 1
             else:
                raise IRCProtocolError('Unknown mode {0}.'.format(m))
