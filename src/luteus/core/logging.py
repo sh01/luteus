@@ -332,6 +332,8 @@ class BacklogFile(LogFile):
          rv = 0
          self.f.seek(0)
          self.p.dump(rv)
+      else:
+         int(rv)
       return rv
    
    def get_records(self, skip=1):
@@ -727,6 +729,7 @@ class AutoDiscardingBackLogger(BackLogger):
       
          del(ipsc)
       del(ipscs)
+      del(cbd)
 
    def _process_msg(self, ipscs, msg, outgoing):
       bl_contexts = super()._process_msg(msg, outgoing)
