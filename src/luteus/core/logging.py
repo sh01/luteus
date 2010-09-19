@@ -314,6 +314,7 @@ class BacklogFile(LogFile):
       self.p.dump(o)
       self._buffered_record_count += 1
       self.f.flush()
+      #self._ts_last_use = time.time()
    
    def _get_dcb(self):
       return (self._discarded_record_count + self._buffered_record_count)
@@ -360,7 +361,8 @@ class BacklogFile(LogFile):
          return
       
       if (off > self._buffered_record_count):
-         raise ValueError("Can't discard {0} records from file having {1}.".format(off, self._buffered_record_count))
+         raise ValueError("Can't discard {0} records from file {1!a}({2}) having {3} (tdrc: {4} drc: {5}).".format(
+            off, self.f, self.f.fileno(), self._buffered_record_count, target_drc, self._discarded_record_count))
       
       fn_tmp = self.fn + b'.tmp'
       f_old = self.f
