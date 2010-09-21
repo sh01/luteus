@@ -425,8 +425,9 @@ def _selftest(targethost, tport, username='chimera', realname=b'? ? ?',
    
    logging.getLogger('IRCClientConnection').setLevel(20)
    
-   us = IRCUserSpec(nicks=(b'NickServ', b'ChanServ'),
-      username=username, realname=realname)
+   us = IRCUserSpec(username=username, realname=realname)
+   us.add_nick(b'NickServ')
+   us.add_nick(b'ChanServ')
    
    servers = (
       IRCServerSpec('nonexistent.nowhere', 1),
