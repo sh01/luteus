@@ -80,7 +80,7 @@ class _PendingPing:
          try:
             cb(*cb_args, **cb_kwargs)
          except Exception as exc:
-            log(40, 'IPSC PONG callback on {0}(*{1}, **{2}) failed:'.format(cb, cb_args, cb_kwargs), exc_info=True)
+            log(40, 'IPSC PONG callback on {0!a}(*{1!a}, **{2!a}) failed:'.format(cb, cb_args, cb_kwargs), exc_info=True)
 
       self.cancel()
    
