@@ -720,18 +720,20 @@ class AutoDiscardingBackLogger(BackLogger):
       # alive, and as such the client may never actually see it.
       # To reliably avoid data loss, we'll queue a ping to all eligible clients here, and only actually discard the data once
       # we get a reply.
-      cbd = [((lambda dcb: self._get_file(ctx)._discard_data(dcb)), (self._get_file(ctx)._get_dcb(),)) for ctx in ctx_s]
       
       if (ipscs):
+         cb_args_s = [(ctx, self._get_file(ctx)._get_dcb()) for ctx in ctx_s]
+         def discard_data(ctx, dcb):
+            self._get_file(ctx)._discard_data(dcb)
+         
          for ipsc in ipscs:
-            for (cb, cb_args) in cbd:
+            for cb_args in cb_args_s:
                # Queuing the request at the front means that we get called for our last request associated with this ping
                # *first*. This allows us to be more efficient in discarding the data.
-               ipsc.queue_ping(self.ping_delay_max, cb, cb_args, front=True)
+               ipsc.queue_ping(self.ping_delay_max, discard_data, cb_args, front=True)
       
          del(ipsc)
       del(ipscs)
-      del(cbd)
 
    def _process_msg(self, ipscs, msg, outgoing):
       bl_contexts = super()._process_msg(msg, outgoing)
