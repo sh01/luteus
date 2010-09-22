@@ -533,8 +533,10 @@ class _Logger:
    
    def _process_process_shutdown(self):
       r = LogProcessShutdown()
-      for chan in self.nc.get_channels(stale=True):
-         self._put_record_file(chan, r)
+      channels = self.nc.get_channels(stale=True)
+      if not (channels is None):
+         for chan in channels:
+            self._put_record_file(chan, r)
       for f in self._storage.values():
          f.close()
       self._storage.clear()
