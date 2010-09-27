@@ -268,7 +268,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
       msg = IRCMessage(self.self_name, cmd, (self._get_nick(),) + args)
       self.send_msg(msg)
    
-   def send_msg_001(self, netname=b'Cruentus IRC bouncer', ia_user=None):
+   def send_msg_001(self, netname=b'Luteus IRC bouncer', ia_user=None):
       if (ia_user is None):
          if (self.nick is None):
             raise ValueError('No nick for peer known.')
