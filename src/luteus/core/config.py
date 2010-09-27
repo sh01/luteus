@@ -80,8 +80,11 @@ class LuteusConfig:
    def new_user_spec(self, *args, **kwargs):
       return IRCUserSpec(*args, **kwargs)
    
-   def new_pseudo_server(self, *args, **kwargs):
-      rv = IRCPseudoServer(self._sa.ed, *args, **kwargs)
+   def new_pseudo_server(self, *args, pseudo_servername=None, **kwargs):
+      if not ((pseudo_servername is None) or (b'.' in pseudo_servername)):
+         raise ValueError('Invalid pseudo server name {0!a}; needs to contain at least one dot.'.format(pseudo_servername))
+      
+      rv = IRCPseudoServer(self._sa.ed, *args, pseudo_servername=pseudo_servername, **kwargs)
       self.assoc_handler.attach_ips(rv)
       return rv
    

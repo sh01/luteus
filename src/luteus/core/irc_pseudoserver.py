@@ -31,8 +31,10 @@ class IRCPSStateError(Exception):
 
 class IRCPseudoServer(AsyncSockServer):
    conn_timeout = 30
-   def __init__(self, ed, *args, pseudo_servername=b'luteus.bnc', **kwargs):
-      if not (isinstance(pseudo_servername, bytes)):
+   def __init__(self, ed, *args, pseudo_servername=None, **kwargs):
+      if (pseudo_servername is None):
+         pseudo_servername = b'luteus.bnc'
+      elif not (isinstance(pseudo_servername, bytes)):
          bytes(pseudo_servername)
       
       self.ed = ed
