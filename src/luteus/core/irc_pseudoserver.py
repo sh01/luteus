@@ -31,17 +31,21 @@ class IRCPSStateError(Exception):
 
 class IRCPseudoServer(AsyncSockServer):
    conn_timeout = 30
-   def __init__(self, ed, *args, **kwargs):
+   def __init__(self, ed, *args, pseudo_servername=b'luteus.bnc', **kwargs):
+      if not (isinstance(pseudo_servername, bytes)):
+         bytes(pseudo_servername)
+      
       self.ed = ed
       self.start_ts = time.time()
       AsyncSockServer.__init__(self, ed, *args, **kwargs)
       self.em_in_msg = OrderingEventMultiplexer(self)
       self.em_new_conn = OrderingEventMultiplexer(self)
+      self._pseudo_servername = pseudo_servername
       
       self.els = []
    
    def connect_process(self, sock, addressinfo):
-      conn = IRCPseudoServerConnection(self.ed, sock, ssts=self.start_ts)
+      conn = IRCPseudoServerConnection(self.ed, sock, ssts=self.start_ts, self_name=self._pseudo_servername)
       conn.sock_set_keepalive(1)
       conn.sock_set_keepidle(self.conn_timeout, self.conn_timeout, 2)
       def eh(msg):
@@ -96,7 +100,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
    maintenance_delay = 50
    
    EM_NAMES = ('em_in_raw', 'em_in_msg', 'em_out_msg', 'em_shutdown')
-   def __init__(self, *args, ssts, self_name=b'luteus.bnc', **kwargs):
+   def __init__(self, *args, ssts, self_name, **kwargs):
       AsyncLineStream.__init__(self, *args, lineseps={b'\n', b'\r'}, **kwargs)
       self.ts_init = time.time()
       self.mgr = None
