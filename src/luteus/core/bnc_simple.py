@@ -21,7 +21,7 @@ import logging
 from .event_multiplexing import OrderingEventMultiplexer
 from .s2c_structures import *
 from .irc_num_constants import *
-from .logging import BackLogger, AutoDiscardingBackLogger, BLFormatter
+from .logging import BackLogger, AutoDiscardingBackLogger, BLFormatter, NickLogLine
 
 
 def _reg_em(em_name, priority=0):
@@ -51,7 +51,7 @@ class SimpleBNC:
    # Dumps of backlog data for specific contexts to a set of ipscs.
    #    em_client_bl_dump(ipscs, bl_contexts: list)
 
-   def __init__(self, network_conn, blf=None):
+   def __init__(self, network_conn, blf=None, mmlf=None):
       self.nc = network_conn
       self.nick = network_conn.get_self_nick()
       self.pcs = network_conn.get_pcs()
@@ -60,8 +60,12 @@ class SimpleBNC:
       self.bl = None
       if (blf is None):
          blf = BLFormatter()
+      if (mmlf is None):
+         mmlf = blf.copy()
+         mmlf.time_fmt = ''
       
       self.blf = blf
+      self.mmlf = mmlf
       
       self.em_client_in_msg = OrderingEventMultiplexer(self)
       self.em_client_msg_fwd = OrderingEventMultiplexer(self)
@@ -199,8 +203,29 @@ class SimpleBNC:
                   continue
             
             aware_clients.append(ipsc)
-            if not (msg.src is ipsc):
-               ipsc.send_msg(msg_out)
+            if (msg.src is ipsc):
+               continue
+            
+            # TODO:
+            # This is somewhat ugly; BLFs should probably be renamed now that we also use them for message mirror formatting.
+            (nicks, chans) = msg_out.get_targets()
+            if (nicks):
+               for tnick in nicks:
+                  nick_mll = NickLogLine(msg, self.nc.get_self_nick(), True)
+                  nmsgs_out = self.mmlf.format_entry(tnick, ipsc.self_name, nick_mll)
+                  for nmsg in nmsgs_out:
+                     ipsc.send_msg(nmsg)
+            
+            # TODO:
+            # ...and not doing it for chans is a hack, too. Among other things this means we'll still get CTCP reflection in
+            # that case ... it's probably not a huge deal in practice, since channel CTCPs are rather rare.
+            # Forcing backlog-like mirror formatting for channels would be unnecessarily ugly. If we're to do this, BLFs should
+            # get some more config options for nice ts-less formatting first.
+            if not (chans):
+               continue
+            msg_out.filter_chan_targets(lambda *_, **__: True, drop_all_nicks=True)
+            ipsc.send_msg(msg_out)
+            
 
          self.em_client_msg_fwd(aware_clients, msg, True)
    

@@ -633,16 +633,18 @@ class IRCMessage:
          rv.append(msg)
       return rv
    
-   def filter_chan_targets(self, filt):
-      """Adjust chan target set by removing channel-targets for which
-         (not filt(chann)). Returns new number of targets."""
+   def filter_chan_targets(self, filt, drop_all_nicks=False):
+      """Adjust chan target set by removing channel-targets for which (not filt(chann)). Returns new number of targets."""
       if (len(self.parameters) < 1):
          return
       
       targets_new = []
       for target in self.parameters[0].split(b','):
          target = self.pcs.make_cib(target)
-         if (self.pcs.is_chann(target) and not (filt(target))):
+         if (self.pcs.is_chann(target)):
+            if (not filt(target)):
+               continue
+         elif (drop_all_nicks):
             continue
          targets_new.append(target)
       

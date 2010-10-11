@@ -72,7 +72,11 @@ class NickLogLine(LogLine):
    
    def get_replay_source(self, lname):
       if (self.outgoing):
-         return self.msg.parameters[0]
+         rv = self.msg.parameters[0]
+         if not (lname is None):
+            rv = self.msg.pcs.make_irc_addr(b''.join((rv, b'!luteususer', b'@', lname)))
+         return rv
+
       return self.src
 
 class LogConnShutdown(LogEntry):
@@ -90,8 +94,7 @@ class LogProcessShutdown(LogEntry):
 class _LogFormatter:
    cmd_map = {b'ACTION': b'*'}
    
-   def __init__(self, time_fmt=None, time_color=None,
-         nmcl_color=None, ctcp_color=None, utc=True):
+   def __init__(self, time_fmt=None, time_color=None, nmcl_color=None, ctcp_color=None, utc=True):
       self.time_fmt = time_fmt
       self.utc = utc
       
@@ -99,24 +102,31 @@ class _LogFormatter:
       self.set_nomsg_channel_line_color(nmcl_color)
       self.set_ctcp_color(ctcp_color)
    
+   def copy(self):
+      return type(self)(time_fmt=self.time_fmt, time_color=self._time_color, nmcl_color=self._nmcl_color,
+         ctcp_color=self._ctcp_color, utc=self.utc)
+   
    def set_utc(self, utc):
       """Set whether to exptress timestamps in UTC."""
       self.utc = utc
    
    # Color setters
    def set_time_color(self, c=None):
+      self._time_color = c
       if (c is None):
          self.time_cfmt = '{0}'
       else:
          self.time_cfmt = '\x03{0:02}{{0}}\x0f'.format(c)
    
    def set_ctcp_color(self, c=None):
+      self._ctcp_color = c
       if (c is None):
          self.ctcp_prefix = b''
       else:
          self.ctcp_prefix = '\x03{0:02}'.format(c).encode('ascii')
    
    def set_nomsg_channel_line_color(self, c=None):
+      self._nmcl_color = c
       if (c is None):
          self.nmcl_prefix = b''
       else:
