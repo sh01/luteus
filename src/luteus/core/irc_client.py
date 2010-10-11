@@ -199,6 +199,8 @@ class _BlockQuery:
       if ((num in (RPL_TRYAGAIN, ERR_UNKNOWNCOMMAND)) and
          (len(msg.parameters) > 1) and
          (msg.parameters[1].upper() == self.msg.command)):
+         # TODO: Some networks (e.g. rizon) do RPL_TRYAGAIN wrong, not specifying the failed command. We should probably
+         # account for that at some point.
          return True
       if ((num == ERR_NOTREGISTERED) and (len(msg.parameters) > 0) and
           (msg.parameters[0].upper() == self.msg.command)):
