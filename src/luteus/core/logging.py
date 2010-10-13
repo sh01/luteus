@@ -601,7 +601,7 @@ class _Logger:
             msg = msg.copy()
             msg.parameters[1] = text[1:]
          else:
-            self.log(40, "{0} got message {1} from {2}, which doesn't appear to have undergone freenet prefix mangling even though we expected it. This is ok for this message, but indicates a desync that will most likely lead to silent data corruption elsewhere. FIX THIS!".format(self, msg, self.nc))
+            self.log(40, "{0} got message {1} from {2}, which doesn't appear to have undergone freenode prefix mangling even though we expected it. This is ok for this message, but indicates a desync that will most likely lead to silent data corruption elsewhere. FIX THIS!".format(self, msg, self.nc))
       return msg
 
    @classmethod
