@@ -22,6 +22,11 @@ class AutoJoiner:
    def add_channel(self, chan, key=None):
       if (isinstance(chan, str)):
          chan = chan.encode()
+      bytes(chan)
+      if (isinstance(key, str)):
+         key = key.encode()
+      elif not (key is None):
+         bytes(key)
       self.channels[chan] = key
    
    def attach_nc(self, nc, priority=1024):
