@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+##!/usr/bin/env python
 #Copyright 2009,2010 Sebastian Hagen
 # This file is part of luteus.
 #
@@ -221,12 +221,9 @@ class SimpleBNC:
             # that case ... it's probably not a huge deal in practice, since channel CTCPs are rather rare.
             # Forcing backlog-like mirror formatting for channels would be unnecessarily ugly. If we're to do this, BLFs should
             # get some more config options for nice ts-less formatting first.
-            if not (chans):
-               continue
-            msg_out.filter_chan_targets(lambda *_, **__: True, drop_all_nicks=True)
-            ipsc.send_msg(msg_out)
-            
-
+            if (chans):
+               ipsc.send_msg(msg_out)
+   
          self.em_client_msg_fwd(aware_clients, msg, True)
    
    def _fake_join(self, conn, chnn):

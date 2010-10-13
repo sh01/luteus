@@ -609,12 +609,13 @@ class _Logger:
       return ctx_s
 
    def _process_msg(self, msg_orig, outgoing):
+      rv = set()
       if (not outgoing):
          msg = self._preprocess_in_msg(msg_orig)
       elif (msg_orig.command in (b'PRIVMSG', b'NOTICE')):
          msg = msg_orig
       else:
-         return []
+         return (False, rv)
       
       src = self._get_src(msg, outgoing)
       msg2 = msg.copy()
@@ -640,25 +641,26 @@ class _Logger:
          else:
             chans = []
       
-      rv = []
       if (chans):
-         rv.extend(chans)
+         rv.update(chans)
          for chan in chans:
             self._put_record_file(chan, bll)
       
       if (nicks):
          nicks = self._map_nick_ctxs(nicks)
-         rv.extend(nicks)
+         rv.update(nicks)
          bll_nick = NickLogLine(msg2, src, outgoing)
          for nick in nicks:
             self._put_record_file(nick, bll_nick)
       
-      if (msg.command in self.BC_AUXILIARY):
+      is_aux = (msg.command in self.BC_AUXILIARY)
+      if (is_aux):
          # Log non-channel commands to chan contexts: NICK and QUIT
          for chan in msg_orig.affected_channels:
-            rv.append(chan.name)
+            rv.add(chan.name)
             self._put_record_file(chan.name, bll)
-      return rv
+      
+      return (is_aux, rv)
    
    def _get_fn(self, ctx):
       if (ctx is None):
@@ -748,9 +750,16 @@ class AutoDiscardingBackLogger(BackLogger):
       del(ipscs)
 
    def _process_msg(self, ipscs, msg, outgoing):
-      bl_contexts = super()._process_msg(msg, outgoing)
-      self._process_data_fwd(ipscs, bl_contexts)
-   
+      (is_aux, bl_contexts) = super()._process_msg(msg, outgoing)
+      if (is_aux):
+         # BNCs (currently) don't filter these messages based on client interest, so we need to check for wanted channels here
+         # to prevent spurious backlog message discarding.
+         for ipsc in ipscs:
+            blc_out = bl_contexts & ipsc.wanted_channels
+            self._process_data_fwd((ipsc,), blc_out)
+      else:
+         self._process_data_fwd(ipscs, bl_contexts)
+
 
 def _main():
    # BL selftests
