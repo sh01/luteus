@@ -779,7 +779,7 @@ class IRCClientConnection(AsyncLineStream):
    def _process_msg_MODE(self, msg):
       """Process MODE message."""
       self._pc_check(msg, 2)
-      victim = bytes(msg.parameters[0])
+      victim = self.pcs.make_cib(msg.parameters[0])
       if (victim[0] in self.IRCNICK_INITCHARS):
          #nick mode
          if (victim != self.nick):
