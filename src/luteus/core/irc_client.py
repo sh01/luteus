@@ -804,8 +804,7 @@ class IRCClientConnection(AsyncLineStream):
       try:
          chan = self.channels[victim]
       except KeyError as exc:
-         raise IRCProtocolError("Got MODE message for channel {0} I'm not on."
-            ''.format(victim)) from exc
+         raise IRCProtocolError("Got MODE message for channel {0} I'm not on.".format(victim)) from exc
       
       self.chm_parser.set_chmodes(self.pcs, self.log, chan, msg.parameters[1:])
       self.em_chmode(chan, msg.parameters)
