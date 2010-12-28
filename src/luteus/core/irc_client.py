@@ -375,7 +375,9 @@ class IRCClientConnection(AsyncLineStream):
    logger = logging.getLogger('IRCClientConnection')
    log = logger.log
    
-   IRCNICK_INITCHARS = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}'
+   # Nicks starting with digits are illegal according to both RFC 1459 and 2812, but have been observed on freenode in the
+   # wild, so we allow digits here.
+   IRCNICK_INITCHARS = set(b'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}')
    
    timeout = 64
    maintenance_delay = 32
