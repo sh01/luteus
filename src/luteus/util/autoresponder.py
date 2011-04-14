@@ -82,6 +82,9 @@ class AutoResponder:
    
    def _process_msg(self, nc, msg):
       ce = self._cmd_map.get(msg.command, ())
+      if (not ce):
+         return
+      
       line = msg.line_build()
       
       for (line_re, reply_maker) in ce:
