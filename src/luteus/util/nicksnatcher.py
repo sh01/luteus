@@ -111,8 +111,9 @@ class NickGhoster:
       
       text = params[1]
       if not ((text == b'Ghost with your nick has been killed.') or
-         (text.endswith(b' has been ghosted.') or
-         (text.endswith(b" isn't currently in use.")))):
+         text.endswith(b' has been ghosted.') or
+         text.endswith(b" isn't currently in use.") or
+         text.endswith(b' is not online.')):
          return
       
       self.nc.conn.put_msg(IRCMessage(None, b'NICK', (self.target_nick,)), None)
