@@ -62,7 +62,7 @@ class AutoResponder:
       def make_reply(*args, **kwargs):
          return [reply]
       
-      return self.add_autoresponse_func(self, cmd, line_re, make_reply)
+      return self.add_autoresponse_func(cmd, line_re, make_reply)
    
    def add_autoresponse_by_nick(self, cmd, line_re, response_fmt):
       """Add nick-specific autoresponse."""
