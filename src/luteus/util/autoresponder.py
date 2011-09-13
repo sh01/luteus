@@ -60,7 +60,7 @@ class AutoResponder:
       msg = arg2msg(reply)
       
       def make_reply(*args, **kwargs):
-         return [reply]
+         return [msg]
       
       return self.add_autoresponse_func(cmd, line_re, make_reply)
    
