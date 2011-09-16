@@ -57,12 +57,15 @@ class AutoResponder:
       
    def add_autoresponse_static(self, cmd, line_re, reply):
       """Add a static single-line autoresponder."""
-      msg = arg2msg(reply)
-      
-      def make_reply(*args, **kwargs):
-         return [msg]
-      
-      return self.add_autoresponse_func(cmd, line_re, make_reply)
+      return self.add_autoresponses_static(cmd, line_re, [reply])
+   
+   def add_autoresponses_static(self, cmd, line_re, replies):
+      """Add a static multi-line autoresponder."""
+      reply_msgs = tuple(arg2msg(reply) for reply in replies)
+      def make_replies(*args, **kwargs):
+         return reply_msgs
+
+      return self.add_autoresponse_func(cmd, line_re, make_replies)
    
    def add_autoresponse_by_nick(self, cmd, line_re, response_fmt):
       """Add nick-specific autoresponse."""
