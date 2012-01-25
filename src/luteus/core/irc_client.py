@@ -912,6 +912,14 @@ class IRCClientConnection(AsyncLineStream):
          self.link_done = True
          self.em_link_finish()
    
+   def _process_msg_422(self, msg):
+      """Process NOMOTD message."""
+      self.motd = False
+      self.motd_pending = None
+      if (not self.link_done):
+         self.link_done = True
+         self.em_link_finish()
+   
    # Channel-JOIN data dump messages
    def _get_own_chan(self, msg, chnn):
       chnn = self.pcs.make_cib(chnn)
