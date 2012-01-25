@@ -178,6 +178,7 @@ class IRCClientNetworkLink:
    ircc_cls = IRCClientConnection
    
    link_timeout = 30
+   conn_timeout = 64
    
    def __init__(self, ed, netname, user_spec, servers, conn_delay_is=10):
       self.ed = ed
@@ -348,7 +349,8 @@ class IRCClientNetworkLink:
       try:
          conn = self.ircc_cls.irc_build_sock_connect(self.ed, target,
             nick=nick, username=self.us.username, realname=self.us.realname,
-            mode=self.us.mode, family=server.af, bind_target=server._get_bt())
+            mode=self.us.mode, family=server.af, bind_target=server._get_bt(),
+            timeout=self.conn_timeout)
       except socket.error as exc:
          self.log(30, 'Failed connecting to {0}: {1!a}'.format(target, str(exc)))
          self.shedule_conn_init()

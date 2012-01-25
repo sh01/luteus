@@ -379,9 +379,7 @@ class IRCClientConnection(AsyncLineStream):
    # wild, so we allow digits here.
    IRCNICK_INITCHARS = set(b'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}')
    
-   timeout = 64
    maintenance_delay = 32
-   conn_timeout = 30
 
    # Freenode capabilities
    FC_IDENTIFY_MSG = 1
@@ -409,7 +407,7 @@ class IRCClientConnection(AsyncLineStream):
    # em_chan_leave(msg, victim, chan, perpetrator)
    #   <victim> is None for self-leaves
    #   <perpetrator> is None for PARTs and self-kicks
-   def __init__(self, ed, *args, nick, username, realname, mode=0, chm_parser=None,
+   def __init__(self, ed, *args, nick, username, realname, mode=0, chm_parser=None, timeout=64,
          **kwargs):
       if (isinstance(nick, str)):
          nick = nick.encode('ascii')
@@ -418,6 +416,8 @@ class IRCClientConnection(AsyncLineStream):
       if (isinstance(realname, str)):
          realname = realname.encode('ascii')
       
+      self.timeout = timeout + 8
+      self.conn_timeout = timeout//2
       self.fc = 0 #freenode capability mask
       self.wnick = nick
       self.nick = None
