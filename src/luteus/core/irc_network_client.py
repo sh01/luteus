@@ -91,7 +91,7 @@ class IRCServerSpec:
       
       if (isinstance(password, str)):
          password = password.encode()
-      if not (isinstance(password, None)):
+      if not (password is None):
          bytes(password)
       
       self.password = password
