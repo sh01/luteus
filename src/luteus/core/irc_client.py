@@ -407,7 +407,7 @@ class IRCClientConnection(AsyncLineStream):
    # em_chan_leave(msg, victim, chan, perpetrator)
    #   <victim> is None for self-leaves
    #   <perpetrator> is None for PARTs and self-kicks
-   def __init__(self, ed, *args, nick, username, realname, mode=0, chm_parser=None, timeout=64,
+   def __init__(self, ed, *args, nick, username, realname, mode=0, chm_parser=None, timeout=64, server_password=None,
          **kwargs):
       if (isinstance(nick, str)):
          nick = nick.encode('ascii')
@@ -415,7 +415,8 @@ class IRCClientConnection(AsyncLineStream):
          username = username.encode('ascii')
       if (isinstance(realname, str)):
          realname = realname.encode('ascii')
-      
+     
+      self.server_password = server_password
       self.timeout = timeout + 8
       self.conn_timeout = timeout//2
       self.fc = 0 #freenode capability mask
@@ -631,6 +632,9 @@ class IRCClientConnection(AsyncLineStream):
    
    def _process_connect(self):
       """Process connect finish."""
+      if not (self.server_password is None):
+         self._send_msg(b'PASS', self.server_password)
+      
       self._send_msg(b'NICK', self.wnick)
       self._send_msg(b'USER', self.username, str(self.mode).encode('ascii'),
          b'*', self.realname)

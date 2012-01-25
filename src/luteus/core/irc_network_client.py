@@ -81,13 +81,19 @@ class SSLSpec:
 
 class IRCServerSpec:
    def __init__(self, host, port, preference=0, af=AF_INET, src_address=None,
-         ssl=None):
+         ssl=None, password=None):
       self.host = host
       self.port = port
       self.af = af
       self.saddr = src_address
       self.preference = preference
       self.ssl = ssl
+      
+      if (isinstance(password, str)):
+         password = password.encode()
+      bytes(password)
+      
+      self.password = password
    
    def get_ssl_fn(self, tname):
       return self.ssl.get_ssl_fn(tname, self.host, self.port)
@@ -350,7 +356,7 @@ class IRCClientNetworkLink:
          conn = self.ircc_cls.irc_build_sock_connect(self.ed, target,
             nick=nick, username=self.us.username, realname=self.us.realname,
             mode=self.us.mode, family=server.af, bind_target=server._get_bt(),
-            timeout=self.conn_timeout)
+            timeout=self.conn_timeout, server_password=server.password)
       except socket.error as exc:
          self.log(30, 'Failed connecting to {0}: {1!a}'.format(target, str(exc)))
          self.shedule_conn_init()
