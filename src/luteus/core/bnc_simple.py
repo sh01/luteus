@@ -157,7 +157,7 @@ class SimpleBNC:
             
             nick = self.nc.get_self_nick()
             if (nick is None):
-              nick = '*'
+              nick = b'*'
             msg2 = IRCMessage(None, b'PRIVMSG',
                   (nick, b'ERROR:' + errstr), src=self,
                   pcs=self.nc.conn.pcs)
