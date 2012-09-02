@@ -154,9 +154,12 @@ class SimpleBNC:
                errstr = b' ' + msg.parameters[0]
             else:
                errstr = b''
-         
+            
+            nick = self.nc.get_self_nick()
+            if (nick is None):
+              nick = '*'
             msg2 = IRCMessage(None, b'PRIVMSG',
-                  (self.nc.get_self_nick(), b'ERROR:' + errstr), src=self,
+                  (nick, b'ERROR:' + errstr), src=self,
                   pcs=self.nc.conn.pcs)
             msg2.trim_last_arg()
          elif (msg.prefix is None):
