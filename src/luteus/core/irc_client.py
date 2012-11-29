@@ -196,7 +196,7 @@ class _BlockQuery:
    
    def is_genericfail(self, msg):
       num = msg.get_cmd_numeric()
-      if ((num in (RPL_TRYAGAIN, ERR_UNKNOWNCOMMAND)) and
+      if ((num in (RPL_TRYAGAIN, ERR_UNKNOWNCOMMAND, ERR_NEEDMOREPARAMS)) and
          (len(msg.parameters) > 1) and
          (msg.parameters[1].upper() == self.msg.command)):
          # TODO: Some networks (e.g. rizon) do RPL_TRYAGAIN wrong, not specifying the failed command. We should probably
