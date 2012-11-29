@@ -425,6 +425,8 @@ class IRCClientConnection(AsyncLineStream):
       self.away = False
       self.ts_last_in = time.time()
       self.timer_maintenance = None
+      self.pcs = S2CProtocolCapabilitySet()
+      self.pcs.em_argchange.new_prio_listener(self._process_005_update)
       
       super().__init__(*args, lineseps={b'\n', b'\r'}, **kwargs)
    
@@ -448,8 +450,6 @@ class IRCClientConnection(AsyncLineStream):
       self.username = username
       self.mode = mode
       self.modes = set()
-      self.pcs = S2CProtocolCapabilitySet()
-      self.pcs.em_argchange.new_prio_listener(self._process_005_update)
       
       if (chm_parser is None):
          chm_parser = ChannelModeParser()
