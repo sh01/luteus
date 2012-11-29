@@ -21,6 +21,7 @@ import time
 from socket import AF_INET
 from collections import deque, OrderedDict
 
+from gonium.dns_resolving.base import QTYPE_A, QTYPE_AAAA
 from .event_multiplexing import OrderingEventMultiplexer
 from .s2c_structures import IRCCIString, IRCMessage, S2CProtocolCapabilitySet
 from .irc_client import IRCClientConnection
@@ -103,6 +104,14 @@ class IRCServerSpec:
       if (self.ssl is None):
          return None
       return self.ssl.get_ssl_args(self.host, self.port)
+   
+   def get_dns_qtypes(self):
+      if (self.af == AF_INET):
+         return (QTYPE_A,)
+      if (self.af == AF_INET6):
+         return (QTYPE_AAAA,)
+      # It better not require DNS lookup, then
+      return ()
    
    def _get_bt(self):
       if (self.saddr is None):
@@ -352,9 +361,9 @@ class IRCClientNetworkLink:
 
       try:
          conn = self.ircc_cls.irc_build_sock_connect(self.sa, server.host, server.port,
-            nick=nick, username=self.us.username, realname=self.us.realname,
-            mode=self.us.mode, family=server.af, bind_target=server._get_bt(),
-            timeout=self.conn_timeout, server_password=server.password)
+            qtypes=server.get_dns_qtypes(), nick=nick, username=self.us.username,
+            realname=self.us.realname, mode=self.us.mode, family=server.af,
+            bind_target=server._get_bt(), timeout=self.conn_timeout, server_password=server.password)
       except socket.error as exc:
          self.log(30, 'Failed connecting to {}: {!a}'.format(target, str(exc)))
          self.shedule_conn_init()
