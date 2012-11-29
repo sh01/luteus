@@ -67,7 +67,7 @@ class _NickPrefList(list):
       #self.nan.add(victim)
       #if not (self.nan_process_timer is None):
          #return
-      #self.nan_process_timer = nc.ed.set_timer(0, self.nan_proces,
+      #self.nan_process_timer = nc.sa.ed.set_timer(0, self.nan_proces,
          #interval_relative=False)
    
    #def process_link(self):

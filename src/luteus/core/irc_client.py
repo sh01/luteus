@@ -407,8 +407,30 @@ class IRCClientConnection(AsyncLineStream):
    # em_chan_leave(msg, victim, chan, perpetrator)
    #   <victim> is None for self-leaves
    #   <perpetrator> is None for PARTs and self-kicks
-   def __init__(self, ed, *args, nick, username, realname, mode=0, chm_parser=None, timeout=64, server_password=None,
-         **kwargs):
+   def __init__(self, *args, **kwargs):
+      for name in self.EM_NAMES:
+        self.em_new(name)
+      self.em_in_msg.new_prio_listener(self.process_input_statekeeping)
+      self.em_in_msg.new_prio_listener(self.process_input_query_fetch, -1024)
+
+      # connection state
+      self.peer = None
+      self.link_done = False
+      self.motd = None
+      self.motd_pending = None
+      self.channels = {}
+      self.query_queue = deque()
+      self.pending_query = None
+      self.ping_tok = None
+      self.away = False
+      self.ts_last_in = time.time()
+      self.timer_maintenance = None
+      
+      super().__init__(*args, lineseps={b'\n', b'\r'}, **kwargs)
+   
+   def start(self, ed, sock, read_r, *, nick, username, realname, mode=0, chm_parser=None, timeout=64, server_password=None, **kwargs):
+      super().start(ed, sock, read_r=read_r)
+      
       if (isinstance(nick, str)):
          nick = nick.encode('ascii')
       if (isinstance(username, str)):
@@ -434,30 +456,12 @@ class IRCClientConnection(AsyncLineStream):
       self.chm_parser = chm_parser
       
       # connection state
-      self.peer = None
-      self.link_done = False
-      self.motd = None
-      self.motd_pending = None
-      self.channels = {}
-      self.query_queue = deque()
-      self.pending_query = None
-      self.ping_tok = None
-      self.away = False
-      self.ts_last_in = time.time()
-      
-      for name in self.EM_NAMES:
-         self.em_new(name)
+      self.ts_last_in = -1
       
       self._chan_autojoin_tried = {}
       self._chan_autojoin_pending = {}
       
-      self.em_in_msg.new_prio_listener(self.process_input_statekeeping)
-      self.em_in_msg.new_prio_listener(self.process_input_query_fetch, -1024)
-      
-      self.timer_maintenance = ed.set_timer(self.maintenance_delay,
-         self._perform_maintenance, parent=self, persist=True)
-      
-      AsyncLineStream.__init__(self, ed, *args, lineseps={b'\n', b'\r'}, **kwargs)
+      self.timer_maintenance = self._ed.set_timer(self.maintenance_delay, self._perform_maintenance, parent=self, persist=True)
       
       self.sock_set_keepalive(1)
       self.sock_set_keepidle(self.conn_timeout, self.conn_timeout, 2)
@@ -471,6 +475,8 @@ class IRCClientConnection(AsyncLineStream):
          return
       if (len(self.query_queue) == 0):
          return
+         
+         
       self.pending_query = self.query_queue.popleft()
       self.ping_fresh = False
       self.pending_query.put_req(self)
@@ -486,11 +492,10 @@ class IRCClientConnection(AsyncLineStream):
       if (idle_time >= self.timeout):
          if (idle_time >= (self.timeout + self.maintenance_delay + 16)):
             # Not likely.
-            self.log(30, '{0} allegedly {1} seconds idle; major clock warp?'
-            .format(self, idle_time))
+            self.log(30, '{} allegedly {} seconds idle; major clock warp?'.format(self, idle_time))
             self.ts_last_in = time.time()
          else:
-            self.log(30, '{0} timed out.'.format(self))
+            self.log(30, '{} timed out.'.format(self))
             self.close()
    
    def put_msg(self, msg, callback, force_bc=False):
@@ -614,13 +619,14 @@ class IRCClientConnection(AsyncLineStream):
       self.send_msg(msg)
    
    @classmethod
-   def irc_build_sock_connect(cls, ed, address, *args, **kwargs):
+   def irc_build_sock_connect(cls, sa, hostname, port, **kwargs):
       def process_connect(__rv):
          rv._process_connect()
       
-      rv = cls.build_sock_connect(ed, address,
-         connect_callback=process_connect, *args, **kwargs)
-      rv.peer_address = address
+      rv = cls(sa.ed, run_start=False, **kwargs)
+      rv.connect_async_sock_bydns(sa, hostname, port, connect_callback=process_connect, **kwargs)
+      
+      rv.peer_address = (hostname, port)
       return rv
    
    def _pc_check(self, msg, num:int):
@@ -641,11 +647,12 @@ class IRCClientConnection(AsyncLineStream):
    
    def process_close(self):
       """Process connection closing."""
-      self.log(20, 'process_close() called on {0}.'.format(id(self)))
+      self.log(20, 'process_close() called on 0x{:x}.'.format(id(self)))
       self.em_shutdown()
       
-      self.timer_maintenance.cancel()
-      self.timer_maintenance = None
+      if not (self.timer_maintenance is None):
+        self.timer_maintenance.cancel()
+        self.timer_maintenance = None
    
    def _process_msg_PING(self, msg):
       """Answer PING."""

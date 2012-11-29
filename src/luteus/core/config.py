@@ -38,6 +38,7 @@ class LuteusConfig:
    def __init__(self, sa=None):
       if (sa is None):
          sa = ServiceAggregate()
+         sa.add_dnslm()
       self._sa = sa
       self._icncs = []
       self._config_ns = {}
@@ -58,7 +59,7 @@ class LuteusConfig:
       if (hr_log_formatter is None):
          hr_log_formatter = self.log_formatter_default
       
-      rv = IRCClientNetworkLink(self._sa.ed, netname, user_spec, servers)
+      rv = IRCClientNetworkLink(self._sa, netname, user_spec, servers)
       
       def add_target(*sargs, **skwargs):
          s = IRCServerSpec(*sargs, **skwargs)

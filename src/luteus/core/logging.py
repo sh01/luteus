@@ -502,7 +502,7 @@ class _Logger:
       self.nc.em_in_msg.new_prio_listener(self._process_msg_in, 1)
       self.nc.em_out_msg.new_prio_listener(self._process_msg_out, -512)
       self.nc.em_shutdown.new_prio_listener(self._process_conn_shutdown, -512)
-      self.nc.ed.em_shutdown.new_listener(self._process_process_shutdown)
+      self.nc.sa.ed.em_shutdown.new_listener(self._process_process_shutdown)
    
    def _do_maintenance(self):
       now = time.time()
@@ -522,7 +522,7 @@ class _Logger:
    def _shedule_maintenance(self):
       if not (self.maintenance_timer is None):
          return
-      self.maintenance_timer = self.nc.ed.set_timer(self.maintenance_delay,
+      self.maintenance_timer = self.nc.sa.ed.set_timer(self.maintenance_delay,
          self._do_maintenance, persist=True)
    
    def _get_file(self, chan):
@@ -726,7 +726,7 @@ class AutoDiscardingBackLogger(BackLogger):
       self.bnc.em_client_bl_dump.new_prio_listener(self._process_data_fwd)
       
       self.nc.em_shutdown.new_prio_listener(self._process_conn_shutdown, -512)
-      self.nc.ed.em_shutdown.new_listener(self._process_process_shutdown)
+      self.nc.sa.ed.em_shutdown.new_listener(self._process_process_shutdown)
    
    def _process_data_fwd(self, ipscs, ctx_s):
       # If we're called, that means the data has been put into the output buffer to one or more of the clients connected to
