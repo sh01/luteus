@@ -18,7 +18,7 @@
 import logging
 import socket
 import time
-from socket import AF_INET
+from socket import AF_INET, AF_INET6
 from collections import deque, OrderedDict
 
 from gonium.dns_resolving.base import QTYPE_A, QTYPE_AAAA
