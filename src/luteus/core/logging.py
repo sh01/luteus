@@ -624,12 +624,17 @@ class _Logger:
       num = msg.get_cmd_numeric()
       if (num is None):
          (nicks, chans) = msg.get_targets()
-         if (nicks and (not outgoing)):
-            if (src.is_nick()):
-               bll_src = msg.pcs.make_cib(src.nick)
+         if (nicks):
+            if (outgoing):
+               # Getting self-mode spam in (back)logs is annoying. Drop it here.
+               if (cmd == b'MODE'):
+                  del(nicks[:])
             else:
-               bll_src = msg.pcs.make_cib(src)
-            nicks = [bll_src]
+               if (src.is_nick()):
+                  bll_src = msg.pcs.make_cib(src.nick)
+               else:
+                  bll_src = msg.pcs.make_cib(src)
+               nicks = [bll_src]
       else:
          nicks = []
          if (num in (332, 333, 366)):
