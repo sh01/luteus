@@ -127,7 +127,6 @@ class NetUserAssocHandler:
          conn_mgr.take_ips_connection(conn)
       except Exception as exc:
          conn.send_msg(IRCMessage(None, b'ERROR', [b'Internal error; check luteus log for details.']))
-         self.log(40, 'Failed to pass on connection {0}; closing it. Error:'
-            .format(conn), exc_info=True)
+         self.log(40, 'Failed to pass on connection {0}; closing it. Error:'.format(conn), exc_info=True)
          conn.mgr = None
          conn.close()
