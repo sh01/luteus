@@ -595,18 +595,18 @@ class IRCMessage:
       chans = []
       nicks = []
 
+      target_spec = self.pcs.make_cib(self.parameters[0])
       if (cmd == b'TOPIC'):
-         chans.append(self.parameters[0])
+         chans.append(target_spec)
       elif (cmd == b'MODE'):
-         t = self.parameters[0]
-         if (self.pcs.is_chann(t)):
-            chans.append(t)
+         if (self.pcs.is_chann(target_spec)):
+            chans.append(target_spec)
          else:
-            nicks.append(t)
+            nicks.append(target_spec)
       else:
-         for t in self.parameters[0].split(b','):
+         for t in target_spec.split(b','):
             cit = self.pcs.make_cib(t)
-            if (self.pcs.is_chann(t)):
+            if (self.pcs.is_chann(cit)):
                chans.append(cit)
             else:
                nicks.append(cit)

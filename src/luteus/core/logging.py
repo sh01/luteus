@@ -627,7 +627,7 @@ class _Logger:
          if (nicks):
             if (outgoing):
                # Getting self-mode spam in (back)logs is annoying. Drop it here.
-               if (cmd == b'MODE'):
+               if (msg_orig.cmd == b'MODE'):
                   del(nicks[:])
             else:
                if (src.is_nick()):
