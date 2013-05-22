@@ -625,11 +625,10 @@ class _Logger:
       if (num is None):
          (nicks, chans) = msg.get_targets()
          if (nicks):
-            if (outgoing):
+            if (msg_orig.cmd == b'MODE'):
                # Getting self-mode spam in (back)logs is annoying. Drop it here.
-               if (msg_orig.cmd == b'MODE'):
-                  del(nicks[:])
-            else:
+               del(nicks[:])
+            elif (not outgoing):
                if (src.is_nick()):
                   bll_src = msg.pcs.make_cib(src.nick)
                else:
