@@ -849,6 +849,12 @@ class IRCClientConnection(AsyncLineStream):
             self.log(35, 'Apparent nickchange collision: {0!a} changed nick to {1!a} on {2!a} on {3!a}. Overwriting.'.format(old_nick, new_nick, chan, self.peer_address))
          chan.users[new_nick] = user_data
          affected_channels.add(chan)
+
+   def _process_msg_TOPIC(self, msg):
+      """Process TOPIC message"""
+      self._pc_check(msg, 2)
+      chan = self._get_own_chan(msg, msg.parameters[0])
+      chan.topic = msg.parameters[1]
    
    # connect numerics
    def _process_msg_001(self, msg):
