@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2009,2010 Sebastian Hagen
+#Copyright 2009,2010,2013 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -612,10 +612,8 @@ class _Logger:
       rv = set()
       if (not outgoing):
          msg = self._preprocess_in_msg(msg_orig)
-      elif (msg_orig.command in (b'PRIVMSG', b'NOTICE')):
-         msg = msg_orig
       else:
-         return (False, rv)
+         msg = msg_orig
       
       src = self._get_src(msg, outgoing)
       msg2 = msg.copy()

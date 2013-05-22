@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2009,2010 Sebastian Hagen
+#Copyright 2009,2010,2013 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -594,16 +594,25 @@ class IRCMessage:
 
       chans = []
       nicks = []
-      
-      for t in self.parameters[0].split(b','):
-         cit = self.pcs.make_cib(t)
+
+      if (cmd == b'TOPIC'):
+         chans.append(self.parameters[0])
+      elif (cmd == b'MODE'):
+         t = self.parameters[0]
          if (self.pcs.is_chann(t)):
-            chans.append(cit)
+            chans.append(t)
          else:
-            nicks.append(cit)
+            nicks.append(t)
+      else:
+         for t in self.parameters[0].split(b','):
+            cit = self.pcs.make_cib(t)
+            if (self.pcs.is_chann(t)):
+               chans.append(cit)
+            else:
+               nicks.append(cit)
       
-      if not (cmd in self.nick_cmds):
-         nicks = None
+         if not (cmd in self.nick_cmds):
+            nicks = None
       
       return (nicks, chans)
    
