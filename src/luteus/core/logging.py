@@ -656,7 +656,7 @@ class _Logger:
             self._put_record_file(nick, bll_nick)
       
       is_aux = (msg.command in self.BC_AUXILIARY)
-      if (is_aux):
+      if (is_aux and (not outgoing)):
          # Log non-channel commands to chan contexts: NICK and QUIT
          for chan in msg_orig.affected_channels:
             rv.add(chan.name)
