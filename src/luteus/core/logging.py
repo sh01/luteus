@@ -573,11 +573,7 @@ class _Logger:
       self._process_msg(msg, False)
       
    def _process_msg_out(self, msg):
-      try:
-        self._process_msg(msg, True)
-      except AttributeError as exc:
-        self.log(40, 'XDEBUG: {!s} {!a}'.format(exc, msg))
-        raise
+      self._process_msg(msg, True)
    
    def _preprocess_in_msg(self, msg):
       if (not (msg.command in (b'PRIVMSG', b'NOTICE'))):
@@ -629,7 +625,7 @@ class _Logger:
       if (num is None):
          (nicks, chans) = msg.get_targets()
          if (nicks):
-            if (msg_orig.cmd == b'MODE'):
+            if (msg_orig.command == b'MODE'):
                # Getting self-mode spam in (back)logs is annoying. Drop it here.
                del(nicks[:])
             elif (not outgoing):
