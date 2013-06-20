@@ -236,10 +236,11 @@ class SimpleBNC:
       for msg in chan.make_join_msgs(conn.nick, prefix=conn.self_name):
          conn.send_msg(msg)
    
-      msgs = self.blf.format_backlog(self.bl, conn.self_name, chnn)
-      for msg in msgs:
-         conn.send_msg(msg)
-      self.em_client_bl_dump((conn,), (chnn,))
+      if not (self.bl is None):
+        msgs = self.blf.format_backlog(self.bl, conn.self_name, chnn)
+        for msg in msgs:
+          conn.send_msg(msg)
+        self.em_client_bl_dump((conn,), (chnn,))
    
    def _process_client_msg(self, conn, msg):
       msg.eaten = False

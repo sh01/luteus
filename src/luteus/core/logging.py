@@ -573,7 +573,11 @@ class _Logger:
       self._process_msg(msg, False)
       
    def _process_msg_out(self, msg):
-      self._process_msg(msg, True)
+      try:
+        self._process_msg(msg, True)
+      except AttributeError as exc:
+        self.log(40, 'XDEBUG: {!s} {!a}'.format(exc, msg))
+        raise
    
    def _preprocess_in_msg(self, msg):
       if (not (msg.command in (b'PRIVMSG', b'NOTICE'))):
