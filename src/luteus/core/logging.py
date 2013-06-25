@@ -19,6 +19,7 @@ import collections
 import logging
 import os
 import os.path
+import pickle
 import time
 from weakref import WeakValueDictionary
 
@@ -330,7 +331,6 @@ class BacklogFile(LogFile):
       return (self._discarded_record_count + self._buffered_record_count)
    
    def _open_file(self):
-      import pickle
       super()._open_file()
       self.p = pickle.Pickler(self.f)
    
@@ -365,8 +365,6 @@ class BacklogFile(LogFile):
       return rv
    
    def _discard_data(self, target_drc):
-      import pickle
-      
       off = target_drc - self._discarded_record_count
       if (off <= 0):
          return
