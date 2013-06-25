@@ -690,7 +690,7 @@ class IRCMessage:
       return (text_frags, ctcp_frags)
    
    def __repr__(self):
-      return '{0}.build_from_line({1!a})'.format(self.__class__.__name__, self.line_build(sanity_check=False)[:-2], self.src, self.pcs)
+      return '{}.build_from_line({!a}, {!a}, {!a})'.format(self.__class__.__name__, self.line_build(sanity_check=False)[:-2], self.src, self.pcs)
 
 
 class IRCChannel:
