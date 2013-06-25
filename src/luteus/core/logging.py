@@ -333,12 +333,12 @@ class BacklogFile(LogFile):
       import pickle
       super()._open_file()
       self.p = pickle.Pickler(self.f)
-      self.u = pickle.Unpickler(self.f)
    
    def _get_init_record(self):
       self.f.seek(0)
+      u = pickle.Unpickler(self.f)
       try:
-         rv = self.u.load()
+         rv = u.load()
       except EOFError:
          rv = 0
          self.f.seek(0)
@@ -349,13 +349,14 @@ class BacklogFile(LogFile):
    
    def get_records(self, skip=1):
       self.f.seek(0)
+      u = pickle.Unpickler(self.f)
       for i in range(skip):
-         self.u.load()
+         u.load()
       
       rv = []
       while (True):
          try:
-            o = self.u.load()
+            o = u.load()
          except EOFError:
             break
          rv.append(o)
@@ -392,7 +393,6 @@ class BacklogFile(LogFile):
       
       self.f = f_new
       self.p = pickler_new
-      self.u = pickle.Unpickler(self.f)
       self._ts_last_use = time.time()
 
    def clear_records(self):
