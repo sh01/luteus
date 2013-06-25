@@ -79,7 +79,7 @@ class AutoResponder:
             return
          
          out_line = out_line.encode('utf-8', 'surrogateescape')
-         return (IRCMessage.build_from_line(out_line, src=self, pcs=None),)
+         return (IRCMessage.build_from_line(out_line, src=self),)
       
       return self.add_autoresponse_func(cmd, line_re, make_reply)
    
