@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#Copyright 2009 Sebastian Hagen
+#Copyright 2009,2013 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -25,7 +25,7 @@ def arg2msg(arg):
    if (isinstance(msg, str)):
       msg = msg.encode('latin-1')
    if (isinstance(msg, ByteString)):
-      msg = IRCMessage.build_from_line(msg, src=arg2msg, pcs=None)
+      msg = IRCMessage.build_from_line(msg, src=arg2msg)
    try:
       msg.line_build()
    except Exception as exc:
