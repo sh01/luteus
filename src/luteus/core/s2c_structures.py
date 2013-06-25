@@ -398,7 +398,7 @@ class IRCMessage:
       return rv
    
    @classmethod
-   def build_from_line(cls, line, src, pcs):
+   def build_from_line(cls, line, src, pcs=S2CProtocolCapabilitySet()):
       """Build instance from raw line"""
       line_split = bytes(line).split(b' ') # RFC 2812 says this is correct.
       if (line.startswith(b':')):
