@@ -382,8 +382,7 @@ class IRCMessage:
    LEN_LIMIT = 512
    ARGC_LIMIT = 15
    
-   def __init__(self, prefix:IRCAddress, command:bytes, parameters, src=None,
-         pcs=S2CProtocolCapabilitySet()):
+   def __init__(self, prefix:IRCAddress, command:bytes, parameters, src=None, pcs=S2CProtocolCapabilitySet()):
       self.prefix = prefix
       self.command = command.upper()
       self.parameters = list(parameters)
@@ -391,8 +390,7 @@ class IRCMessage:
       self.pcs = pcs
    
    def copy(self):
-      return self.__class__(self.prefix, self.command, self.parameters,
-         self.src, self.pcs)
+      return self.__class__(self.prefix, self.command, self.parameters, self.src, self.pcs)
    
    def __getstate__(self):
       rv = self.__dict__.copy()
@@ -692,8 +690,7 @@ class IRCMessage:
       return (text_frags, ctcp_frags)
    
    def __repr__(self):
-      return '{0}.build_from_line({1!a})'.format(
-         self.__class__.__name__, self.line_build(sanity_check=False)[:-2])
+      return '{0}.build_from_line({1!a})'.format(self.__class__.__name__, self.line_build(sanity_check=False)[:-2], self.src, self.pcs)
 
 
 class IRCChannel:
