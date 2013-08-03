@@ -44,6 +44,7 @@ __NUM_specs = (
    (352, 'RPL_WHOREPLY'),
    
    (353, 'RPL_NAMREPLY'),
+   (354, 'RPL_WHOSPCRPL'),
    (366, 'RPL_ENDOFNAMES'),
    (324, 'RPL_CHANNELMODEIS'),
    

@@ -357,7 +357,7 @@ class BlockQueryWHO(_BlockQuery):
    cmds = (b'WHO',)
    def get_msg_barriers(self, msg):
       num = msg.get_cmd_numeric()
-      return (num in (RPL_WHOREPLY, RPL_ENDOFWHO), (num == RPL_ENDOFWHO))
+      return (num in (RPL_WHOREPLY, RPL_WHOSPCRPL, RPL_ENDOFWHO), (num == RPL_ENDOFWHO))
 
 class IRCMessageIn(IRCMessage):
    """IRCMessage built from data we got from our uplink, with some additional attached data explaining side effects.
