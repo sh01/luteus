@@ -287,8 +287,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
       if (host is None):
          host = self.fl.getsockname()[0]
       
-      self.send_msg_num(2, 'Your host is {0}, running version {1}'
-         .format(host, version).encode('ascii'))
+      self.send_msg_num(2, 'Your host is {}, running version {}'.format(host, version).encode('ascii'))
    
    def send_msg_003(self, ts=None):
       if (ts is None):
@@ -296,9 +295,13 @@ class IRCPseudoServerConnection(AsyncLineStream):
       
       tstr = time.strftime('%Y-%m-%d', time.gmtime(ts))
       
-      self.send_msg_num(3, 'This server was created {0}'.format(tstr)
-         .encode('ascii'))
+      self.send_msg_num(3, 'This server was created {}'.format(tstr).encode('ascii'))
    
+   def send_msg_004(self, host=None, version='foo'):
+      if (host is None):
+         host = self.fl.getsockname()[0]
+      self.send_msg_num(4, '{} {}'.format(host, version))
+
    def send_msgs_005(self, isupport_data):
       self.pcs = isupport_data
       msgs = isupport_data.get_005_lines(self.nick, self.self_name)

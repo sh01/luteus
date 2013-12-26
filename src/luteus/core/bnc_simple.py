@@ -310,6 +310,7 @@ class SimpleBNC:
       conn.send_msg_001()
       conn.send_msg_002()
       conn.send_msg_003()
+      conn.send_msg_004()
       conn.send_msgs_005(self.pcs)
       conn.send_msgs_motd()
       
