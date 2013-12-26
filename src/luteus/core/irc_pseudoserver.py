@@ -300,7 +300,7 @@ class IRCPseudoServerConnection(AsyncLineStream):
    def send_msg_004(self, host=None, version='foo'):
       if (host is None):
          host = self.fl.getsockname()[0]
-      self.send_msg_num(4, '{} {}'.format(host, version))
+      self.send_msg_num(4, '{} {}'.format(host, version).encode('ascii'))
 
    def send_msgs_005(self, isupport_data):
       self.pcs = isupport_data
