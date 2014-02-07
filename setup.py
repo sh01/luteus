@@ -27,7 +27,7 @@ setup(name='luteus',
    author='Sebastian Hagen',
    author_email='sebastian_hagen@memespace.net',
    url='http://git.memespace.net/git/luteus.git',
-   packages=('luteus','luteus.core','luteus.util'),
+   packages=('luteus','luteus.core','luteus.util', 'luteus.bot'),
    scripts=(
       'src/tools/luteus',
    ),

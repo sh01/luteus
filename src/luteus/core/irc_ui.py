@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2009 Sebastian Hagen
+#Copyright 2009,2014 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -73,6 +73,7 @@ class LuteusOP(OptionParser):
       self.file_t.seek(0)
       self.file_t.truncate()
 
+
 class LuteusUICtx:
    def __init__(self, cc, bnc_name):
       self.cc = cc #client connection
@@ -92,30 +93,77 @@ class LuteusUICtx:
          self.cc.send_msg(msg)
 
 
-def _decode_if_valid(s, encoding='ascii'):
+def _decode_if_valid(s):
    try:
-      rv = s.decode(encoding)
+      rv = s.decode('utf-8', 'surrogateescape')
    except ValueError:
       rv = s
    return rv
 
-def _encode_if_str(s, encoding='ascii'):
+def _encode_if_str(s):
    if (hasattr(s, 'encode')):
-      return s.encode(encoding)
+      return s.encode('utf-8', 'surrogateescape')
    return s
 
-_OptSpec = collections.namedtuple('OptSpec', ('args', 'kwargs'))
+OptSpec = collections.namedtuple('OptSpec', ('args', 'kwargs'))
+def OS(*args, **kwargs):
+   return OptSpec(args, kwargs)
 
-class LuteusIRCUI:
-   def OS(*args, **kwargs):
-      return _OptSpec(args, kwargs)
-   
-   def __init__(self, bnc):
+def rch(cmd, description=None):
+   """Helper: Register command handler func."""
+   def d(c):
+      c.cmd = cmd
+      c.desc = description
+      return c
+   return d
+
+
+class LuteusUIBase:
+   def __init__(self):
       self.els = set()
-      self.bnc = bnc
       self._op_setup()
-      self.els.add(bnc.em_client_in_msg.new_prio_listener(self.process_msg))
-   
+
+   def process_cmd(self, cmd, raw_args, ctx, ignore_unknown=False):
+     try:
+        (argc_min, argc_max, func, op) = self.ch[cmd]
+     except KeyError:
+        if (not ignore_unknown):
+           ctx.output('Unknown command {!a}; you might want to try HELP.'.format(cmd).encode('ascii'))
+        return
+     
+     op.clear_output()
+     try:
+        (opts, args) = op.parse_args(raw_args)
+     except LuteusOPBailout:
+        op.output_lines(ctx.output)
+        return
+     
+     args = args[1:]
+     if ((len(args) < argc_min) or
+        ((not (argc_max is None)) and (len(args) > argc_max))):
+        # Invalid number of parameters
+        op.print_help()
+        op.output_lines(ctx.output)
+        return
+     
+     args = [_encode_if_str(a) for a in args]
+     kwargs = dict(((key, _encode_if_str(v)) for (key, v) in opts.__dict__.items()))
+     func(ctx, *args, **kwargs)
+
+   @rch("HELP", "Print luteus IRC interface help.")
+   def _pc_help(self, ctx):
+      cmds = list(self.ch.keys())
+      cmds.sort()
+      
+      for cmd in cmds:
+         data = self.ch[cmd]
+         op = data[3]
+         ctx.output('--------- {} ---------'.format(cmd).encode('latin-1'))
+         op.clear_output()
+         op.print_help()
+         op.output_lines(ctx.output)
+         ctx.output(b' ', width=None)
+
    def _op_setup(self):
       self.ch = ch = {}
       from inspect import getfullargspec
@@ -162,6 +210,13 @@ class LuteusIRCUI:
             argc_max = len(args)
          
          self.ch[val.cmd] = (len(args), argc_max, val, op)
+
+
+class LuteusIRCUI(LuteusUIBase):   
+   def __init__(self, bnc):
+      super().__init__()
+      self.bnc = bnc
+      self.els.add(bnc.em_client_in_msg.new_prio_listener(self.process_msg))
    
    def process_msg(self, conn, msg):
       """Process MSG from client."""
@@ -180,41 +235,7 @@ class LuteusIRCUI:
       
       ui_args_str = [_decode_if_valid(a) for a in ui_args]
       self.process_cmd(ui_args_str[0].upper(), ui_args_str, ctx)
-   
-   def process_cmd(self, cmd, raw_args, ctx):
-     try:
-        (argc_min, argc_max, func, op) = self.ch[cmd]
-     except KeyError:
-        ctx.output(b'Unknown command; you might want to try HELP.')
-        return
-     
-     op.clear_output()
-     try:
-        (opts, args) = op.parse_args(raw_args)
-     except LuteusOPBailout:
-        op.output_lines(ctx.output)
-        return
-     
-     args = args[1:]
-     if ((len(args) < argc_min) or
-        ((not (argc_max is None)) and (len(args) > argc_max))):
-        # Invalid number of parameters
-        op.print_help()
-        op.output_lines(ctx.output)
-        return
-     
-     args = [_encode_if_str(a) for a in args]
-     kwargs = dict(((key, _encode_if_str(v)) for (key, v) in opts.__dict__.items()))
-     func(ctx, *args, **kwargs)
-   
-   def rch(cmd, description=None):
-      """Helper: Register command handler func."""
-      def d(c):
-         c.cmd = cmd
-         c.desc = description
-         return c
-      return d
-   
+         
    @rch("LPART", "Stop monitoring channel on this client connection.")
    def _pc_connpart(self, ctx, chan):
       cc = ctx.cc
@@ -274,19 +295,6 @@ class LuteusIRCUI:
       
       ctx.output(b'Reset backlog for chans ' + b' '.join(chans) + b'.')
    
-   @rch("HELP", "Print luteus IRC interface help.")
-   def _pc_help(self, ctx):
-      cmds = list(self.ch.keys())
-      cmds.sort()
-      
-      for cmd in cmds:
-         data = self.ch[cmd]
-         op = data[3]
-         ctx.output('--------- {0} ---------'.format(cmd).encode('latin-1'))
-         op.clear_output()
-         op.print_help()
-         op.output_lines(ctx.output)
-         ctx.output(b' ', width=None)
       
    @rch("JAEC", "Join all chans currently tracked by the bouncer on this network.")
    def _pc_jaec(self, ctx):
@@ -385,7 +393,5 @@ class LuteusIRCUI:
       ctx.output(ascii(len(nicks)).encode('ascii'))
       text = ascii(nicks).encode('ascii')
       ctx.output(text)
-   
-   del(rch)
-   del(OS)
+
 
