@@ -164,15 +164,18 @@ class LuteusUIBase:
          op.output_lines(ctx.output)
          ctx.output(b' ', width=None)
 
-   def _op_setup(self):
-      self.ch = ch = {}
-      from inspect import getfullargspec
-      
+   def _get_ui_callables(self):
       for name in dir(self):
          val = getattr(self, name)
          if (not hasattr(val, 'cmd')):
             continue
-         
+         yield val
+
+   def _op_setup(self):
+      self.ch = ch = {}
+      from inspect import getfullargspec
+      
+      for val in self._get_ui_callables():
          as_ = getfullargspec(val)
          defaults = as_.defaults or []
          args = as_.args[2:-1*len(defaults) or None]

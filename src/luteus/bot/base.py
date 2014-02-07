@@ -19,7 +19,7 @@ import logging
 import re
 
 from ..core.s2c_structures import IRCMessage
-
+from ..core.irc_ui import LuteusUIBase
 
 class SimpleBot:
    logger = logging.getLogger('SimpleBot')
@@ -59,6 +59,14 @@ class TriggerContext:
     self.b.send_text(self.envs, text)
 
 
+class TriggerUI(LuteusUIBase):
+   def __init__(self):
+     self.ui_callables = []
+
+   def _get_ui_callables(self):
+     return self.ui_callables
+
+
 class TriggeredBot(SimpleBot):
   rep_nick = '^([@]?(?:{})[:]?)'
 
@@ -70,6 +78,16 @@ class TriggeredBot(SimpleBot):
     # Test that this works now.
     re.compile(self.rep_nick.format('|'.join(virtual_nicks)).encode('ascii'))
     self.re_trigger = re.compile('^({})'.format('|'.join(triggers)).encode('ascii'))
+    self.ui = TriggerUI()
+
+  def add_mod(self, mod):
+    for name in dir(mod):
+      val = getattr(mod, name)
+      if (not hasattr(val, 'cmd')):
+        continue
+      self.ui.ui_callables.append(val)
+    self.ui._op_setup()
+    return mod
 
   def _process_in_msg(self, msg):
     nick = self.nc.get_self_nick()
@@ -128,7 +146,5 @@ class TriggeredBot(SimpleBot):
   
     ignore_unknown_cmd = not (aimed_at_nick or have_nick_prefix)
     argv = [x.decode('utf-8', 'surrogateescape') for x in argv]
-    self.process_cmd(argv[0].upper(), argv, ctx, ignore_unknown_cmd)
+    self.ui.process_cmd(argv[0].upper(), argv, ctx, ignore_unknown_cmd)
 
-  def process_cmd(self, *args, **kwargs):
-    pass
