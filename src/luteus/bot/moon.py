@@ -50,7 +50,8 @@ class DistributedEntropy:
   log = logger.log
 
   timeout = 16
-  query_limit = 190
+  query_limit = 92
+  secret_length = 20
   def __init__(self, bot, peer, join_string):
     self.peer = bytes(peer)
     self.ees = {} # entropy expectations
@@ -68,11 +69,16 @@ class DistributedEntropy:
     def cb(entropy):
       if (hex):
         entropy = b2a_hex(entropy).decode('ascii')
-      ctx.output('SE: {}'.format(entropy))
-    self.get_entropy(ctx, count, cb)
+      ctx.output('RE: {}'.format(entropy))
+    try:
+      self.get_entropy(ctx, count, cb)
+    except Exception as exc:
+      ctx.output('SE_E: {!a}'.format(str(exc)))
 
   def get_entropy(self, ctx, count, callback):
     from time import time
+    from hashlib import sha224
+
     if (count > self.query_limit):
       raise ValueError('Requested {!a} > {!a} bytes of entropy.'.format(count, self.query_limit))
 
@@ -82,20 +88,27 @@ class DistributedEntropy:
     if (len(entropy_local) != count):
       raise Exception('Failed to generate local entropy.')
 
+    sec = os.urandom(self.secret_length)
+    if (len(sec) != self.secret_length):
+      raise Exception('Failed to generate local entropy.')
+
+    el_vs = b'\x00'.join((entropy_local, b2a_hex(sec)))
+    
     def ee(entropy_remote):
       self.log(20, 'Processing remote entropy: {} {} {}.'.format(ee.peer, ee_id, entropy_remote))
       err = None
       if (len(entropy_remote)/2 != count):
-        ctx.output('Wrong length; got {} != {} bytes.'.format(len(entropy_remote)/2, count))
+        ctx.output('SE_E: Wrong length; got {} != {} bytes.'.format(len(entropy_remote)/2, count))
         return
 
       entropy = xor_bytes(b2a_hex(entropy_local), entropy_remote)
+      ctx.output('SE_C {} {}'.format(b2a_hex(el_vs).decode('ascii'), b2a_hex(entropy).decode('ascii')))
       callback(entropy)
 
     self.ees[ee_id.encode('ascii')] = ee
     ee.peer = self.peer
 
-    ctx.output('{}{}ES {} {:x}'.format(self.peer.decode('utf-8', 'surrogateescape'), self.join_string, ee_id, count).encode('ascii'))
+    ctx.output('{}{}ES {} {:x} sha224:{}'.format(self.peer.decode('utf-8', 'surrogateescape'), self.join_string, ee_id, count, sha224(el_vs).hexdigest()))
 
   def _process_in_msg(self, msg):
     if (msg.command != b'PRIVMSG'):
