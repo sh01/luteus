@@ -50,7 +50,7 @@ class DistributedEntropy:
   log = logger.log
 
   timeout = 16
-  query_limit = 92
+  query_limit = 90
   secret_length = 20
   def __init__(self, bot, peer, join_string):
     self.peer = bytes(peer)
@@ -82,7 +82,7 @@ class DistributedEntropy:
     if (count > self.query_limit):
       raise ValueError('Requested {!a} > {!a} bytes of entropy.'.format(count, self.query_limit))
 
-    seqnum = (int(time()*1000000) % (self.timeout*1000000))
+    seqnum = (int(time()*1000000) % (self.timeout*256*1000000))
     ee_id = '{:x}|{:x}'.format(self.pid, seqnum)
     entropy_local = os.urandom(count)
     if (len(entropy_local) != count):
