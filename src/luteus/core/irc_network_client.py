@@ -170,7 +170,7 @@ class IRCUserSpec:
       self.mode = mode
    
    def add_nick(self, nick, **kwargs):
-      self.nicks[nick] = IRCNick(nick, **kwargs)
+      self.nicks[IRCCIString(nick)] = IRCNick(nick, **kwargs)
    
    def make_nick_picker(self):
       nick_iter = iter(self.nicks)
