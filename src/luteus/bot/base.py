@@ -56,7 +56,10 @@ class TriggerContext:
     # Think about having an option for soft line wrapping here or in a helper method as for irc_ui.
     if (isinstance(text, str)):
       text = text.encode('utf-8','surrogateescape')
-    self.b.send_text(self.envs, text)
+    
+    # Send reply to targeted channels, but don't reflect it back to our nick.
+    targets = [env.name for env in self.envs if not env.is_nick]
+    self.b.send_text(targets, text)
 
 
 class TriggerUI(LuteusUIBase):
@@ -66,6 +69,12 @@ class TriggerUI(LuteusUIBase):
    def _get_ui_callables(self):
      return self.ui_callables
 
+
+class Target:
+   def __init__(self, name, is_nick):
+      self.name = name
+      self.is_nick = is_nick
+   
 
 class TriggeredBot(SimpleBot):
   rep_nick = '^([@]?(?:{})[:]?)'
@@ -135,11 +144,11 @@ class TriggeredBot(SimpleBot):
     target_envs = []
     chans = self.nc.get_channels()
     for target in msg.get_chan_targets():
-      if (target in chans):
-        target_envs.append(target)
+      if (chan in chans):
+        target_envs.append(Target(chan, False))
 
     if (aimed_at_nick):
-      target_envs.append(nick)
+      target_envs.append(Target(nick, True))
 
     # This looks like a command addressed to us. Prefix cruft has been stripped, let's go parse.
     ctx = TriggerContext(self, target_envs)
