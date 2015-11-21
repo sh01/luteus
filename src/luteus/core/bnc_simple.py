@@ -228,19 +228,30 @@ class SimpleBNC:
                ipsc.send_msg(msg_out)
    
          self.em_client_msg_fwd(aware_clients, msg, True)
-   
+
+   def replay_backlog(self, conn, context):
+     if (self.bl is None):
+       return
+     try:
+       msgs = self.blf.format_backlog(self.bl, conn.self_name, context)
+     except Exception as exc:
+       err_msg = IRCMessage(conn.self_name, b'PRIVMSG', (conn.nick, 'Failed to replay backlog for context {!a} due to internal error: {!a}'.format(context, exc).encode('ascii')), src=self)
+       conn.send_msg(err_msg)
+       raise
+     
+     for msg in msgs:
+       conn.send_msg(msg)
+     
+     self.em_client_bl_dump((conn,), (context,))
+
    def _fake_join(self, conn, chnn):
       chan = self.nc.conn.channels[chnn]
       conn.fake_join(chnn)
       
       for msg in chan.make_join_msgs(conn.nick, prefix=conn.self_name):
          conn.send_msg(msg)
-   
-      if not (self.bl is None):
-        msgs = self.blf.format_backlog(self.bl, conn.self_name, chnn)
-        for msg in msgs:
-          conn.send_msg(msg)
-        self.em_client_bl_dump((conn,), (chnn,))
+      
+      self.replay_backlog(conn, chnn)
    
    def _process_client_msg(self, conn, msg):
       msg.eaten = False
@@ -319,10 +330,6 @@ class SimpleBNC:
       
       if (self.nc.get_self_away()):
          conn.send_msg_306()
-      
-      if (self.bl):
-         msgs = self.blf.format_backlog(self.bl, conn.self_name, None)
-         for msg in msgs:
-            conn.send_msg(msg)
-         self.em_client_bl_dump((conn,), (None,))
+
+      self.replay_backlog(conn, None)
    
