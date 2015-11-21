@@ -365,7 +365,7 @@ class IRCClientNetworkLink:
             realname=self.us.realname, mode=self.us.mode, family=server.af,
             bind_target=server._get_bt(), timeout=self.conn_timeout, server_password=server.password)
       except socket.error as exc:
-         self.log(30, 'Failed connecting to {}: {!a}'.format(target, str(exc)))
+         self.log(30, 'Failed connecting to {}: {!a}'.format(server, str(exc)))
          self.shedule_conn_init()
          return
       
