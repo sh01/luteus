@@ -24,7 +24,7 @@ from collections import deque, OrderedDict
 from gonium.dns_resolving.base import QTYPE_A, QTYPE_AAAA
 from .event_multiplexing import OrderingEventMultiplexer
 from .s2c_structures import IRCCIString, IRCMessage, S2CProtocolCapabilitySet
-from .irc_client import IRCClientConnection
+from .irc_client import IRCClientConnection, ThroughputLimiter
 from .irc_num_constants import *
 from .logging import HRLogger
 
@@ -196,7 +196,10 @@ class IRCClientNetworkLink:
    link_timeout = 30
    conn_timeout = 64
    
-   def __init__(self, sa, netname, user_spec, servers, conn_delay_is=10):
+   def __init__(self, sa, netname, user_spec, servers, conn_delay_is=10, tp_limiter=None):
+      if (tp_limiter is None):
+         tp_limiter = ThroughputLimiter(5, 10, 1)
+      
       self.sa = sa
       self.us = user_spec
       self.conn = None
@@ -221,6 +224,7 @@ class IRCClientNetworkLink:
          self.em_new(em_name + '_pre')
       
       self.netname = netname
+      self.tp_limiter = tp_limiter
       self.em_shutdown.new_prio_listener(self._process_conn_shutdown)
       self.em_in_msg.new_prio_listener(self._em_setsrc, -1048576)
       
@@ -363,7 +367,8 @@ class IRCClientNetworkLink:
          conn = self.ircc_cls.irc_build_sock_connect(self.sa, server.host, server.port,
             qtypes=server.get_dns_qtypes(), nick=nick, username=self.us.username,
             realname=self.us.realname, mode=self.us.mode, family=server.af,
-            bind_target=server._get_bt(), timeout=self.conn_timeout, server_password=server.password)
+            bind_target=server._get_bt(), timeout=self.conn_timeout, server_password=server.password,
+            tp_limiter=self.tp_limiter)
       except socket.error as exc:
          self.log(30, 'Failed connecting to {}: {!a}'.format(server, str(exc)))
          self.shedule_conn_init()

@@ -371,6 +371,52 @@ class IRCMessageIn(IRCMessage):
       rv = self.affected_channels = set()
       return rv
 
+class ThroughputLimiter:
+   def __init__(self, num, period, step):
+      self.n = num
+      self.p = period
+      self.step = step
+      self.win = [0]*(period//step)
+      self.widx = 0
+      self.c = 0
+      self.last_update = time.time()
+
+   def update(self):
+      now = time.time()
+      pc_0 = int(self.last_update//self.step)
+      pc_1 = int(now//self.step)
+
+      delta = pc_1 - pc_0
+      print(self.c, self.n, self.win, pc_1-pc_0)
+
+      if (delta < 1):
+         return
+      elif (delta >= len(self.win)):
+         self.win = [0]*len(self.win)
+         self.c = 0
+         self.last_update = now
+      else:
+         w = self.win
+         l = len(w)
+         idx = self.widx
+         c = self.c
+         for i in range(delta):
+            idx = (idx + 1) % l
+            c -= w[idx]
+            w[idx] = 0
+         self.widx = idx
+         self.c = c
+
+      self.last_update = now
+
+   def check(self):
+      return (self.c < self.n)
+
+   def bump(self):
+      self.c += 1
+      self.win[self.widx] += 1
+
+
 class IRCClientConnection(AsyncLineStream):
    logger = logging.getLogger('IRCClientConnection')
    log = logger.log
@@ -427,10 +473,11 @@ class IRCClientConnection(AsyncLineStream):
       self.timer_maintenance = None
       self.pcs = S2CProtocolCapabilitySet()
       self.pcs.em_argchange.new_prio_listener(self._process_005_update)
+      self.out_line_buf = deque()
       
       super().__init__(*args, lineseps={b'\n', b'\r'}, **kwargs)
    
-   def start(self, ed, sock, read_r, *, nick, username, realname, mode=0, chm_parser=None, timeout=64, server_password=None, **kwargs):
+   def start(self, ed, sock, read_r, *, nick, username, realname, mode=0, chm_parser=None, timeout=64, server_password=None, tp_limiter, **kwargs):
       super().start(ed, sock, read_r=read_r)
       
       if (isinstance(nick, str)):
@@ -450,6 +497,8 @@ class IRCClientConnection(AsyncLineStream):
       self.username = username
       self.mode = mode
       self.modes = set()
+      self.tp_limiter = tp_limiter
+      self.tpl_delay = tp_limiter.p + 0.0001
       
       if (chm_parser is None):
          chm_parser = ChannelModeParser()
@@ -462,6 +511,7 @@ class IRCClientConnection(AsyncLineStream):
       self._chan_autojoin_pending = {}
       
       self.timer_maintenance = self._ed.set_timer(self.maintenance_delay, self._perform_maintenance, parent=self, persist=True)
+      self.timer_push = None
       
       self.sock_set_keepalive(1)
       self.sock_set_keepidle(self.conn_timeout, self.conn_timeout, 2)
@@ -611,8 +661,24 @@ class IRCClientConnection(AsyncLineStream):
       """Send MSG to peer immediately"""
       self.em_out_msg(msg)
       line_out = msg.line_build()
-      self.send_bytes((line_out,))
-   
+      self.out_line_buf.append(line_out)
+      if (self.timer_push is None):
+         self._push_msgs()
+
+   def _push_msgs(self):
+      tp = self.tp_limiter
+      buf = self.out_line_buf
+      tp.update()
+      print(buf)
+      while (buf and tp.check()):
+         self.send_bytes((buf.popleft(),))
+         tp.bump()
+
+      if (buf):
+         self.timer_push = self._ed.set_timer(self.tpl_delay, self._push_msgs, parent=self, persist=False)
+      else:
+         self.timer_push = None
+
    def _send_msg(self, command, *parameters):
       """Build MSG and send to peer immediately."""
       msg = IRCMessage(None, command, parameters)
@@ -653,6 +719,9 @@ class IRCClientConnection(AsyncLineStream):
       if not (self.timer_maintenance is None):
         self.timer_maintenance.cancel()
         self.timer_maintenance = None
+      if not (self.timer_push is None):
+         self.timer_push.cancel()
+         self.timer_push = None
    
    def _process_msg_PING(self, msg):
       """Answer PING."""
