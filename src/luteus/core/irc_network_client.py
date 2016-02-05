@@ -198,7 +198,7 @@ class IRCClientNetworkLink:
    
    def __init__(self, sa, netname, user_spec, servers, conn_delay_is=10, tp_limiter=None):
       if (tp_limiter is None):
-         tp_limiter = ThroughputLimiter(5, 10, 1)
+         tp_limiter = ThroughputLimiter(10, 10, 1)
       
       self.sa = sa
       self.us = user_spec
