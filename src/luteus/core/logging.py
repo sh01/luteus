@@ -156,8 +156,11 @@ class _LogFormatter:
       if (isinstance(e, NickLogLine)):
          if (e.outgoing):
             rv =  b'<'
-         else:
+         elif (e.msg.get_cmd_numeric() is None):
             rv = b'>'
+         else:
+            rv = b''
+         
          if not (is_msglike):
             rv = b' '.join((rv, self.map_cmd_out(cmd)))
          return rv
@@ -183,7 +186,7 @@ class _LogFormatter:
          targeted to orig_target with luteus name lname."""
       ctcps = []
       if (isinstance(e, LogLine)):
-         if not (e.msg.get_cmd_numeric() is None):
+         if not ((e.msg.get_cmd_numeric() is None) or isinstance(e, NickLogLine)):
             return []
          
          msg_like = e.is_msglike()
@@ -287,7 +290,7 @@ class LogFile:
       _lf = self._OPEN_FILES.get(ap)
       if not (_lf is None):
          if (_lf.f):
-            raise ValueError("We've opened file {0!a} for logging purposes already. Aborting.".format(fn))
+            raise ValueError("We've opened file {!a} for logging purposes already. Aborting.".format(fn))
          else:
             _lf.close()
       
@@ -582,14 +585,14 @@ class _Logger:
       
       text = msg.parameters[1]
       (tf, ctcps) = msg.split_ctcp()
-         
+      
       for ctcp in ctcps:
          if (not ctcp.startswith(b'ACTION')):
             ctcp_like = True
             break
       else:
          ctcp_like = False
-         
+      
       if (ctcp_like and (self.nc.conn.FC_IDENTIFY_CTCP & self.nc.conn.fc) or
          ((not ctcp_like) and (self.nc.conn.FC_IDENTIFY_MSG & self.nc.conn.fc) and
          ((msg.parameters[0] != b'$*') or (msg.command != 'NOTICE')))):
@@ -599,7 +602,7 @@ class _Logger:
             msg = msg.copy()
             msg.parameters[1] = text[1:]
          else:
-            self.log(40, "{0} got message {1} from {2}, which doesn't appear to have undergone freenode prefix mangling even though we expected it. This is ok for this message, but indicates a desync that will most likely lead to silent data corruption elsewhere. FIX THIS!".format(self, msg, self.nc))
+            self.log(40, "{} got message {} from {}, which doesn't appear to have undergone freenode prefix mangling even though we expected it. This is ok for this message, but indicates a desync that will most likely lead to silent data corruption elsewhere. FIX THIS!".format(self, msg, self.nc))
       return msg
 
    @classmethod
@@ -620,6 +623,7 @@ class _Logger:
       bll = ChanLogLine(msg2, src, outgoing)
       # Determine logging contexts
       num = msg.get_cmd_numeric()
+      make_cib = msg.pcs.make_cib
       if (num is None):
          (nicks, chans) = msg.get_targets()
          if (nicks):
@@ -628,18 +632,21 @@ class _Logger:
                del(nicks[:])
             elif (not outgoing):
                if (src.is_nick()):
-                  bll_src = msg.pcs.make_cib(src.nick)
+                  bll_src = make_cib(src.nick)
                else:
-                  bll_src = msg.pcs.make_cib(src)
+                  bll_src = make_cib(src)
                nicks = [bll_src]
+         cmd = msg.command
+
       else:
          nicks = []
-         if (num in (332, 333, 366)):
-            chans = [msg.pcs.make_cib(msg.parameters[1])]
+         chans = []
+         if (num == 317):
+            nicks.append(make_cib(msg.parameters[1]))
+         elif (num in (332, 333, 366)):
+            chans.append(make_cib(msg.parameters[1]))
          elif (num == 353):
-            chans = [msg.pcs.make_cib(msg.parameters[2])]
-         else:
-            chans = []
+            chans.append(make_cib(msg.parameters[2]))
       
       if (chans):
          rv.update(chans)
