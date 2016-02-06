@@ -390,8 +390,8 @@ class IRCClientNetworkLink:
          # Last nick was rejected, try again.
          nick = nick_picker()
          self.log(20, 'Trying nick {!a} on connection {!a}.'.format(nick, conn))
-         
-         conn.put_msg(IRCMessage(None, b'NICK', (nick,)), None)
+
+         conn.send_NICK(nick)
          
       def link_watch_finish():
          lwl1.close()

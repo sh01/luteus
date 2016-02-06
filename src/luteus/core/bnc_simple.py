@@ -1,5 +1,5 @@
 ##!/usr/bin/env python
-#Copyright 2009,2010 Sebastian Hagen
+#Copyright 2009,2010,2012,2013,2015,2016 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -158,9 +158,7 @@ class SimpleBNC:
             nick = self.nc.get_self_nick()
             if (nick is None):
               nick = b'*'
-            msg2 = IRCMessage(None, b'PRIVMSG',
-                  (nick, b'ERROR:' + errstr), src=self,
-                  pcs=self.nc.conn.pcs)
+            msg2 = IRCMessage(None, b'PRIVMSG', (nick, b'ERROR:' + errstr), src=self, pcs=self.nc.conn.pcs)
             msg2.trim_last_arg()
          elif (msg.prefix is None):
             msg2 = msg.copy()
@@ -271,9 +269,8 @@ class SimpleBNC:
             away_msg = None
          self.nc.set_away_msg_default(away_msg)
       
-      if not (self.nc.conn):
-         conn.send_msg_num(RPL_TRYAGAIN, msg.command,
-            b"Bouncer disconnected; please wait for reconnect.")
+      if not (self.nc.is_linked()):
+         conn.send_msg_num(RPL_TRYAGAIN, msg.command, b"Bouncer disconnected; please wait for reconnect.")
          return
       
       if (msg.command == b'JOIN'):

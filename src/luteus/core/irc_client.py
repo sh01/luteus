@@ -628,33 +628,30 @@ class IRCClientConnection(AsyncLineStream):
       try:
          cmd_str = msg.command.decode('ascii')
       except UnicodeDecodeError:
-         self.log(30, 'Peer {0} sent undecodable message {1}.'.format(self.peer_address, msg))
+         self.log(30, 'Peer {!r} sent undecodable message {}.'.format(self.peer_address, msg))
       else:
-         fn = '_process_msg_{0}'.format(cmd_str)
+         fn = '_process_msg_' + cmd_str
          try:
             func = getattr(self,fn)
          except AttributeError:
-            self.log(10, 'Peer {0} sent unknown message {1}.'.format(self.peer_address, msg))
+            self.log(10, 'Peer {!r} sent unknown message {}.'.format(self.peer_address, msg))
             
          else:
             if (cmd_str.isdigit()):
                # Numeric replies are always targeted to our nick.
                if (not msg.parameters):
-                  self.log(30, 'From {0}: bogus numeric: {1}'.format(
-                     self.peer_address, msg))
+                  self.log(30, 'From {!r}: bogus numeric: {}'.format(self.peer_address, msg))
                else:
                   nick = self.pcs.make_cib(msg.parameters[0])
                   if (self.nick != nick):
                      if (not (self.nick is None)):
-                        self.log(30, 'From {0}: missed a nickchange from {0} '
-                           'to {1}.'.format(self.peer_address, self.nick, nick))
+                        self.log(30, 'From {!r}: missed a nickchange from {!a} to {!a}.'.format(self.peer_address, self.nick, nick))
                      self.nick = nick
             
             try:
                func(msg)
             except IRCProtocolError as exc:
-               self.log(30, 'From {0}: msg {1} failed to process: {2}'.format(
-                  self.peer_address, msg, exc), exc_info=True)
+               self.log(30, 'From {!r}: msg {} failed to process: {!r}'.format(self.peer_address, msg, exc), exc_info=True)
    
    def send_msg(self, msg):
       """Send MSG to peer immediately"""
@@ -699,15 +696,17 @@ class IRCClientConnection(AsyncLineStream):
       if (len(msg.parameters) < num):
          raise IRCProtocolError(msg, 'Insufficient arguments; expected at least'
             ' {0}.'.format(num))
-   
+
+   def send_NICK(self, nick):
+      self._send_msg(b'NICK', nick)
+
    def _process_connect(self):
       """Process connect finish."""
       if not (self.server_password is None):
          self._send_msg(b'PASS', self.server_password)
-      
-      self._send_msg(b'NICK', self.wnick)
-      self._send_msg(b'USER', self.username, str(self.mode).encode('ascii'),
-         b'*', self.realname)
+
+      self.send_NICK(self.wnick)
+      self._send_msg(b'USER', self.username, str(self.mode).encode('ascii'), b'*', self.realname)
    
    def process_close(self):
       """Process connection closing."""
@@ -978,8 +977,7 @@ class IRCClientConnection(AsyncLineStream):
    def _process_msg_372(self, msg):
       """Process MOTD line"""
       if (self.motd_pending is None):
-         self.log(30, 'From {1}: got MOTD line {0} without preceding 375.'
-            'Ignoring.'.format(self.peer_address, msg))
+         self.log(30, 'From {}: got MOTD line {} without preceding 375. Ignoring.'.format(self.peer_address, msg))
          return
       self._pc_check(msg, 2)
       self.motd_pending.append(msg.parameters[1])
