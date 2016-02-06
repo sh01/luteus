@@ -387,7 +387,6 @@ class ThroughputLimiter:
       pc_1 = int(now//self.step)
 
       delta = pc_1 - pc_0
-      print(self.c, self.n, self.win, pc_1-pc_0)
 
       if (delta < 1):
          return
@@ -669,7 +668,6 @@ class IRCClientConnection(AsyncLineStream):
       tp = self.tp_limiter
       buf = self.out_line_buf
       tp.update()
-      print(buf)
       while (buf and tp.check()):
          self.send_bytes((buf.popleft(),))
          tp.bump()
