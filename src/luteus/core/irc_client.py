@@ -470,6 +470,7 @@ class IRCClientConnection(AsyncLineStream):
       self.away = False
       self.ts_last_in = time.time()
       self.timer_maintenance = None
+      self.timer_push = None
       self.pcs = S2CProtocolCapabilitySet()
       self.pcs.em_argchange.new_prio_listener(self._process_005_update)
       self.out_line_buf = deque()
@@ -510,7 +511,6 @@ class IRCClientConnection(AsyncLineStream):
       self._chan_autojoin_pending = {}
       
       self.timer_maintenance = self._ed.set_timer(self.maintenance_delay, self._perform_maintenance, parent=self, persist=True)
-      self.timer_push = None
       
       self.sock_set_keepalive(1)
       self.sock_set_keepidle(self.conn_timeout, self.conn_timeout, 2)
