@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2009,2010,2013 Sebastian Hagen
+#Copyright 2009,2010,2012,2013,2016 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
