@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2009,2014 Sebastian Hagen
+#Copyright 2009,2014,2016 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -75,9 +75,10 @@ class LuteusOP(OptionParser):
 
 
 class LuteusUICtx:
-   def __init__(self, cc, bnc_name):
+   def __init__(self, cc, bnc_name, msg):
       self.cc = cc #client connection
       self.bnc_name = bnc_name
+      self.msg = msg
    
    def output(self, text, width=80, break_on_hyphens=False, **kwargs):
       if not (width is None):
@@ -230,7 +231,7 @@ class LuteusIRCUI(LuteusUIBase):
          return
       
       msg.eaten = True
-      ctx = LuteusUICtx(conn, conn.self_name)
+      ctx = LuteusUICtx(conn, conn.self_name, msg)
       
       if (len(ui_args) < 1):
          ctx.output(b'Insufficient tokens: need to specify a command.')

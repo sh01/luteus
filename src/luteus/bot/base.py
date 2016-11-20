@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2013,2014 Sebastian Hagen
+#Copyright 2013,2014,2016 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -47,10 +47,19 @@ class SimpleBot:
 
 
 class TriggerContext:
-  def __init__(self, b, envs):
+  def __init__(self, b, envs, msg, cmd_text):
     self.b = b
     # Channels and nicks that this trigger line was sent to that caused it to be received by us. This includes both shared channels and our current nick (but not virtual nicks).
     self.envs = envs
+    self.msg = msg
+    self.cmd_text = cmd_text
+
+  def get_cmd_tail(self, skip):
+     """Return trailing fraction of initial commandline invocation, skipping <skip> words from front."""
+     if len(self.cmd_text.split()) <= skip:
+       return None
+     (*_, tail) = self.cmd_text.split(None, skip)
+     return tail
 
   def output(self, text, width=None):
     # Think about having an option for soft line wrapping here or in a helper method as for irc_ui.
@@ -143,7 +152,7 @@ class TriggeredBot(SimpleBot):
 
     target_envs = []
     chans = self.nc.get_channels()
-    for target in msg.get_chan_targets():
+    for chan in msg.get_chan_targets():
       if (chan in chans):
         target_envs.append(Target(chan, False))
 
@@ -151,8 +160,8 @@ class TriggeredBot(SimpleBot):
       target_envs.append(Target(nick, True))
 
     # This looks like a command addressed to us. Prefix cruft has been stripped, let's go parse.
-    ctx = TriggerContext(self, target_envs)
-  
+    ctx = TriggerContext(self, target_envs, msg, text)
+
     ignore_unknown_cmd = not (aimed_at_nick or have_nick_prefix)
     argv = [x.decode('utf-8', 'surrogateescape') for x in argv]
     self.ui.process_cmd(argv[0].upper(), argv, ctx, ignore_unknown_cmd)
