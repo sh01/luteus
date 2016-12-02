@@ -58,6 +58,8 @@ def roll_dice(count, sides):
     raise SemanticError('Excessive dice count: {} > 128.'.format(count))
   if (sides > 8192):
     raise SemanticError('Excessive die sides: {} > 8192'.format(sides))
+  if (sides < 1):
+    raise SemanticError("I can't roll a {} sided die.".format(sides))
 
   return sum(random.randint(1,sides) for _ in range(count))
 
@@ -85,7 +87,6 @@ class RollTree:
     return int(p)
 
   def parse(self):
-    import time; time.sleep(1)
     t = None
     def push(val):
       nonlocal t
@@ -100,9 +101,10 @@ class RollTree:
         if (a1 is None):
           t.a1 = val
           return
-      raise SyntaxError('Value collision')
-    
+      raise SyntaxError('Value collision at {}'.format(idx))
+
     while (self.idx < len(self.data)):
+      idx = self.idx
       c = self.getc()
       self.idx += 1
       # Whitespace
@@ -116,7 +118,7 @@ class RollTree:
           push(exc.val)
           continue
         else:
-          raise SyntaxError('Unmatched "("')
+          raise SyntaxError('Unmatched "(" at {}'.format(idx))
       if (c == b')'):
         cp = CloseParen()
         cp.val = t
@@ -126,7 +128,9 @@ class RollTree:
       # Operators
       if not (f is None):
         if (t is None):
-          raise SyntaxError('Missing prefix value for infix operator {!a}'.format(bytes(c)))
+          raise SyntaxError('Missing prefix value for infix operator {!a} at {}'.format(bytes(c), idx))
+        if (getattr(t, 'a1', True) is None):
+          raise SyntaxError('Operator collision with {!a} at {}.'.format(bytes(c), idx))
         t = Operator(f, t)
         continue
 
@@ -137,7 +141,7 @@ class RollTree:
         push(int(self.data[m.start():self.idx]))
         continue
 
-      raise SyntaxError('Unrecognized character {!a}'.format(bytes(c)))
+      raise SyntaxError('Unrecognized character {!a} at {}.'.format(bytes(c), idx))
     return t
 
 
