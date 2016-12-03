@@ -31,6 +31,8 @@ def get_comment(ctx, skip):
   return '({})'.format(repr(tail)[1:])
 
 
+xcode_params = ('utf-8', 'surrogateescape')
+
 class SemanticError(Exception):
   pass
 
@@ -202,11 +204,16 @@ class RPGMod(ModBase):
   @rch("ROLL", "Generic die roll")
   def _roll_die(self, ctx, *args):
     text = ctx.get_cmd_tail(1)
-    t = RollTree(text)
+    (body, *comment_data) = text.split(b'#', 1)
+    if (len(comment_data) == 0):
+      comment_str = ''
+    else:
+      comment_str = '({})'.format(comment_data[0].strip().decode(*xcode_params))
+    t = RollTree(body)
     try:
       val = t.eval()
     except Exception as exc:
-      ctx.output('{}: {}'.format(type(exc).__name__, exc))
+      ctx.output('{}{}: {}'.format(type(exc).__name__, comment_str, exc))
       return
 
-    ctx.output('ROLL: {}'.format(val))
+    ctx.output('ROLL{}: {}'.format(comment_str, val))
