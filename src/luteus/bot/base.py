@@ -70,6 +70,12 @@ class TriggerContext:
     targets = [env.name for env in self.envs if not env.is_nick]
     self.b.send_text(targets, text)
 
+  def get_src(self):
+    try:
+      return self.msg.prefix.target_get()
+    except AttributeError:
+      return None
+
 
 class TriggerUI(LuteusUIBase):
    def __init__(self):

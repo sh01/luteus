@@ -206,9 +206,15 @@ class RPGMod(ModBase):
     text = ctx.get_cmd_tail(1)
     (body, *comment_data) = text.split(b'#', 1)
     if (len(comment_data) == 0):
-      comment_str = ''
+      src = ctx.get_src()
+      if (src is None):
+        comment_str = '?'
+      else:
+        comment_str = src.decode(*xcode_params)
     else:
-      comment_str = '({})'.format(comment_data[0].strip().decode(*xcode_params))
+      comment_str = comment_data[0].strip().decode(*xcode_params)
+
+    comment_str = '({})'.format(comment_str)
     t = RollTree(body)
     try:
       val = t.eval()
