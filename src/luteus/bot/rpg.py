@@ -56,12 +56,14 @@ def roll_dice(count, sides):
   """<count>d<sides> dice roll"""
   count = int(count)
   sides = int(sides)
+  if (count < 0):
+    raise SemanticError('Rolling {} dice is not meaningful.'.format(count))
   if (count > 128):
     raise SemanticError('Excessive dice count: {} > 128.'.format(count))
-  if (sides > 8192):
-    raise SemanticError('Excessive die sides: {} > 8192'.format(sides))
   if (sides < 1):
     raise SemanticError("I can't roll a {} sided die.".format(sides))
+  if (sides > 8192):
+    raise SemanticError('Excessive die sides: {} > 8192'.format(sides))
 
   return sum(random.randint(1,sides) for _ in range(count))
 
