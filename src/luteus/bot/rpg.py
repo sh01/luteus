@@ -24,11 +24,21 @@ class ModBase:
   def link_bot(self, bot):
     return bot.add_mod(self)
 
+def format_src(ctx):
+  src = ctx.get_src()
+  if (src is None):
+    rv = '?'
+  else:
+    rv = src.decode(*xcode_params)
+  return rv
+
 def get_comment(ctx, skip):
-  tail = ctx.get_cmd_tail(skip+1)
-  if (tail is None):
-    return ''
-  return '({})'.format(repr(tail)[1:])
+  c = ctx.get_cmd_tail(skip+1)
+  if (c is None):
+    c = format_src(ctx)
+  else:
+    c = repr(c)[1:]
+  return '({})'.format(c)
 
 
 xcode_params = ('utf-8', 'surrogateescape')
@@ -150,25 +160,29 @@ class RollTree:
       raise SyntaxError('Unrecognized character {!a} at {}.'.format(bytes(c), idx))
     return t
 
-def format_src(ctx):
-  src = ctx.get_src()
-  if (src is None):
-    rv = '?'
-  else:
-    rv = src.decode(*xcode_params)
-  return rv
-
-
 class RPGMod(ModBase):
   _os_targets = OS('-o', '--to', help="Additional targets to send result to (comma-separated).", type='str')
   @rch("EP", "EclipsePhase die roll")
-  def _ep_dice(self, ctx, *args):
+  def _ep(self, ctx, *args, targets:_os_targets=None):
     if len(args) < 1:
       ctx.output('Insufficient arguments.')
       return
 
     comment = get_comment(ctx, 1)
-    
+
+    if (ctx.is_nick_targeted()):
+      # Quote full message to counteract cheating
+      comment = '({}: {})'.format(format_src(ctx), ctx.get_cmd_tail(1))
+    else:
+      comment = get_comment(ctx, 1)
+
+    targets = self.get_targets(targets)
+    try:
+      self.check_targets(ctx, targets)
+    except TargetError as exc:
+      ctx.output('{}{}: {}'.format(type(exc).__name__, comment_str, exc))
+      return
+      
     try:
       tval = int(args[0])
     except ValueError:
@@ -199,9 +213,9 @@ class RPGMod(ModBase):
       qualifier = 'Ordinary'
 
     succS = ['failure', 'success']
-
+      
     res = 'EP {}: 1d100={} --> {} {} (Margin {})'.format(comment, roll, qualifier, succS[succ], margin)
-    ctx.output(res)
+    ctx.output(res, extra_targets=targets)
 
   @rch("INIT", "EclipsePhase VTS init")
   def _ep_init(self, ctx, *,
