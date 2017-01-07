@@ -32,6 +32,8 @@ def get_comment(ctx, skip):
 
 
 xcode_params = ('utf-8', 'surrogateescape')
+class TargetError(Exception):
+  pass
 
 class SemanticError(Exception):
   pass
@@ -148,8 +150,17 @@ class RollTree:
       raise SyntaxError('Unrecognized character {!a} at {}.'.format(bytes(c), idx))
     return t
 
+def format_src(ctx):
+  src = ctx.get_src()
+  if (src is None):
+    rv = '?'
+  else:
+    rv = src.decode(*xcode_params)
+  return rv
+
 
 class RPGMod(ModBase):
+  _os_targets = OS('-o', '--to', help="Additional targets to send result to (comma-separated).", type='str')
   @rch("EP", "EclipsePhase die roll")
   def _ep_dice(self, ctx, *args):
     if len(args) < 1:
@@ -193,30 +204,50 @@ class RPGMod(ModBase):
     ctx.output(res)
 
   @rch("INIT", "EclipsePhase VTS init")
-  def _ep_init(self, ctx,
-      int_:OS('-i', '--int', help="Character INT", type='int'),
-      ref:OS('-r', '--ref', help="Characrter REF", type='int'),
-      *args):
+  def _ep_init(self, ctx, *,
+      int_:OS('-i', '--int', help="Character INT", type='int')=None,
+      ref:OS('-r', '--ref', help="Characrter REF", type='int')=None
+    ):
 
     roll = random.randint(1,100)
     mod = int(ref)*2+int(int_)
     res = 'INIT {}: 1d100+<mod> --> {}+{} --> {}'.format(get_comment(ctx, 2), roll, mod, roll+mod)
     ctx.output(res)
 
+  @staticmethod
+  def get_targets(targets):
+    if (targets is None):
+      return []
+    return targets.split(b',')
+    
+  @staticmethod
+  def check_targets(ctx, targets):
+    for target in targets:
+      if not ctx.b.check_nick_presence(target):
+        raise TargetError('Unknown target {!a}.'.format(target))
+    return True
+  
   @rch("ROLL", "Generic die roll")
-  def _roll_die(self, ctx, *args):
+  def _roll_die(self, ctx, *args, targets:_os_targets=None):
     text = ctx.get_cmd_tail(1)
     (body, *comment_data) = text.split(b'#', 1)
-    if (len(comment_data) == 0):
-      src = ctx.get_src()
-      if (src is None):
-        comment_str = '?'
-      else:
-        comment_str = src.decode(*xcode_params)
+
+    if (ctx.is_nick_targeted()):
+      # Quote full message to counteract cheating
+      comment_str = '{}: {}'.format(format_src(ctx), text)
+    elif (len(comment_data) == 0):
+      comment_str = format_src(ctx)
     else:
       comment_str = comment_data[0].strip().decode(*xcode_params)
-
+      
     comment_str = '({})'.format(comment_str)
+    targets = self.get_targets(targets)
+    try:
+      self.check_targets(ctx, targets)
+    except TargetError as exc:
+      ctx.output('{}{}: {}'.format(type(exc).__name__, comment_str, exc))
+      return
+    
     t = RollTree(body)
     try:
       val = t.eval()
@@ -224,4 +255,6 @@ class RPGMod(ModBase):
       ctx.output('{}{}: {}'.format(type(exc).__name__, comment_str, exc))
       return
 
-    ctx.output('ROLL{}: {}'.format(comment_str, val))
+    res = 'ROLL{}: {}'.format(comment_str, val)
+    ctx.output(res, extra_targets=targets)
+

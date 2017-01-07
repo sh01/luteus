@@ -61,13 +61,24 @@ class TriggerContext:
      (*_, tail) = self.cmd_text.split(None, skip)
      return tail
 
-  def output(self, text, width=None):
+  def is_nick_targeted(self):
+     if len(self.envs) != 1:
+       # Iffy. In principle it could be part-targeted that way.
+       return False
+     return self.envs[0].is_nick
+  
+  def output(self, text, width=None, extra_targets=()):
     # Think about having an option for soft line wrapping here or in a helper method as for irc_ui.
     if (isinstance(text, str)):
       text = text.encode('utf-8','surrogateescape')
     
     # Send reply to targeted channels, but don't reflect it back to our nick.
     targets = [env.name for env in self.envs if not env.is_nick]
+    if (targets == []):
+      p = self.msg.prefix
+      if (not (p is None)) and (p.is_nick):
+        targets.append(p.target_get())
+    targets.extend(extra_targets)
     self.b.send_text(targets, text)
 
   def get_src(self):
@@ -113,6 +124,19 @@ class TriggeredBot(SimpleBot):
     self.ui._op_setup()
     return mod
 
+  def check_nick_presence(self, nick):
+     """Check if specified nick is in one of our channels."""
+     chans = self.nc.get_channels()
+     if chans is None:
+       return False
+
+     nick = self.nc.get_pcs().make_cib(nick)
+     for chan in chans.values():
+        modes = chan.users.get(nick)
+        if not (modes is None):
+          return True
+     return False
+ 
   def _process_in_msg(self, msg):
     nick = self.nc.get_self_nick()
 

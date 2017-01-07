@@ -126,7 +126,7 @@ class LuteusUIBase:
 
    def process_cmd(self, cmd, raw_args, ctx, ignore_unknown=False):
      try:
-        (argc_min, argc_max, func, op) = self.ch[cmd]
+        (argc_min, argc_max, func, op, argmap) = self.ch[cmd]
      except KeyError:
         if (not ignore_unknown):
            ctx.output('Unknown command {!a}; you might want to try HELP.'.format(cmd).encode('ascii'))
@@ -148,7 +148,7 @@ class LuteusUIBase:
         return
      
      args = [_encode_if_str(a) for a in args]
-     kwargs = dict(((key, _encode_if_str(v)) for (key, v) in opts.__dict__.items()))
+     kwargs = dict(((argmap[key], _encode_if_str(v)) for (key, v) in opts.__dict__.items()))
      func(ctx, *args, **kwargs)
 
    @rch("HELP", "Print luteus IRC interface help.")
@@ -199,21 +199,31 @@ class LuteusUIBase:
          op = LuteusOP(usage=usage)
          op.prog = val.cmd
          op.set_description(val.desc)
-         
+
+         argmap = {}
          for arg in opt_names:
             (oa, okwa) = as_.annotations[arg]
             oa = list(oa)
-            oa.append('--{0}'.format(arg))
+            longarg = None
+            for a in oa:
+              if a.startswith('--'):
+                longarg = a[2:]
+                break
+            
+            if (longarg is None):
+               oa.append('--{}'.format(arg))
+               longarg = arg
             okwa['default'] = dv[arg]
             opt = Option(*oa, **okwa)
             op.add_option(opt)
+            argmap[longarg] = arg
          
          if not (as_.varargs is None):
             argc_max = None
          else:
             argc_max = len(args)
          
-         self.ch[val.cmd] = (len(args), argc_max, val, op)
+         self.ch[val.cmd] = (len(args), argc_max, val, op, argmap)
 
 
 class LuteusIRCUI(LuteusUIBase):   
