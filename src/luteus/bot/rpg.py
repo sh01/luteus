@@ -261,14 +261,18 @@ class RPGMod(ModBase):
     except TargetError as exc:
       ctx.output('{}{}: {}'.format(type(exc).__name__, comment_str, exc))
       return
-    
-    t = RollTree(body)
-    try:
-      val = t.eval()
-    except Exception as exc:
-      ctx.output('{}{}: {}'.format(type(exc).__name__, comment_str, exc))
-      return
 
-    res = 'ROLL{}: {}'.format(comment_str, val)
+    results = []
+    for f in body.split(b';'):
+      t = RollTree(f)
+      try:
+        val = t.eval()
+      except Exception as exc:
+        ctx.output('{}{}: {}'.format(type(exc).__name__, comment_str, exc))
+        return
+
+      results.append(str(val))
+
+    res = 'ROLL{}: {}'.format(comment_str, ' '.join(results))
     ctx.output(res, extra_targets=targets)
 
