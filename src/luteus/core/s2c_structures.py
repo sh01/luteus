@@ -119,10 +119,6 @@ class IRCCIString(bytes):
       
       return (self.translate(self.lowermap) == other.translate(self.lowermap))
    
-   def __neq__(self, other):
-      return not (self == other)
-   # FIXME: add ordering?
-   
    def __hash__(self):
       return bytes.__hash__(self.translate(self.lowermap))
    
@@ -155,8 +151,6 @@ class Mode:
       return (self.level > other.level)
    def __eq__(self, other):
       return (self.char == other.char)
-   def __neq__(self, other):
-      return (self.char != other.char)
    def __hash__(self):
       return hash(self.char)
 
