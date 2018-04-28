@@ -31,6 +31,8 @@ class IRCPSStateError(Exception):
 
 class IRCPseudoServer(AsyncSockServer):
    conn_timeout = 30
+   logger = logging.getLogger('IRCPseudoServer')
+   log = logger.log
    def __init__(self, ed, *args, pseudo_servername=None, **kwargs):
       if (pseudo_servername is None):
          pseudo_servername = b'luteus.bnc'
@@ -47,14 +49,17 @@ class IRCPseudoServer(AsyncSockServer):
       self.els = []
    
    def connect_process(self, sock, addressinfo):
-      conn = IRCPseudoServerConnection(self.ed, sock, ssts=self.start_ts, self_name=self._pseudo_servername)
-      conn.sock_set_keepalive(1)
-      conn.sock_set_keepidle(self.conn_timeout, self.conn_timeout, 2)
-      def eh(msg):
-         self.em_in_msg(conn, msg)
-      
-      conn.em_in_msg.new_prio_listener(eh, -1024)
-      self.em_new_conn(conn)
+      try:
+        conn = IRCPseudoServerConnection(self.ed, sock, ssts=self.start_ts, self_name=self._pseudo_servername)
+        conn.sock_set_keepalive(1)
+        conn.sock_set_keepidle(self.conn_timeout, self.conn_timeout, 2)
+        def eh(msg):
+           self.em_in_msg(conn, msg)
+
+        conn.em_in_msg.new_prio_listener(eh, -1024)
+        self.em_new_conn(conn)
+      except OSError as exc:
+        self.log(30, "Failed to accept connection from {}:".format(addressinfo), exc_info=True)
    
    def close(self):
       AsyncSockServer.__close__()
