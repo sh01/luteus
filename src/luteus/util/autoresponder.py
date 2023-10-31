@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2009,2010,2013 Sebastian Hagen
+#Copyright 2009,2010,2013,2023 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with luteus.  If not, see <http://www.gnu.org/licenses/>.
 
-from collections import ByteString
+from collections.abc import ByteString
 import re
 
 from ..core.s2c_structures import IRCCIString, IRCMessage
@@ -69,8 +69,6 @@ class AutoResponder:
    
    def add_autoresponse_by_nick(self, cmd, line_re, response_fmt):
       """Add nick-specific autoresponse."""
-      from collections import ByteString
-      
       def make_reply(nc, msg):
          nick = nc.get_self_nick()
          try:

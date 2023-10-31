@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copyright 2009,2010,2013 Sebastian Hagen
+#Copyright 2009,2010,2013,2023 Sebastian Hagen
 # This file is part of luteus.
 #
 # luteus is free software; you can redistribute it and/or modify
@@ -15,7 +15,8 @@
 # You should have received a copy of the GNU General Public License
 # along with luteus.  If not, see <http://www.gnu.org/licenses/>.
 
-from collections import deque, ByteString
+from collections import deque
+from collections.abc import ByteString
 import logging
 
 from .event_multiplexing import OrderingEventMultiplexer
