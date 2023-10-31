@@ -32,5 +32,5 @@ Once connected, you can interrogate and control luteus over IRC; use
 commands.
 
 To make luteus fork into the background, simply run it without --debug. To
-install it locally, use the provided setup.py file;
-'python3 ./setup.py install --help' should get you started.
+install it locally, use the provided metadata files;
+'pip install --no-deps --user .' should get you started.
