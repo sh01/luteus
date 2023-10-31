@@ -31,6 +31,7 @@ setup(name='luteus',
    scripts=(
       'src/tools/luteus',
    ),
-   package_dir={'luteus':'src/luteus'}
+   package_dir={'luteus':'src/luteus'},
+   zip_safe=False
 )
 
